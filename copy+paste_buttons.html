@@ -1,0 +1,585 @@
+<!-- File: public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Click-to-Copy Button Maker</title>
+<style>
+  .hidden { display: none !important; }
+  :root { --radius: 14px; }
+  * { box-sizing: border-box; }
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    line-height:1.4; background:#0b0f10; color:#e8e9ea;
+    min-height:100vh; padding:24px; display:grid; grid-template-rows:auto 1fr; place-items:start center;
+  }
+  .app{ width:min(1100px,100%); background:#12151a; border:1px solid #222831; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); padding:20px; position:relative; }
+
+  /* Default: title left, toolbar right */
+  .header{
+    display:grid;
+    grid-template-columns:1fr auto;
+    align-items:center;
+    gap:12px;
+    margin-bottom:12px;
+  }
+  .titlewrap{ display:flex; flex-direction:column; gap:4px; }
+  h1{ font-size:20px; margin:0; }
+  .muted{ color:#a7b1c2; font-size:13px; }
+  .toolbar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  /* Stack toolbar under title on narrow OR ultra-wide viewports */
+  @media (max-width:780px), (min-aspect-ratio: 2/1){
+    .header{ grid-template-columns:1fr; gap:8px; }
+    .titlewrap{ margin-bottom:2px; }
+    .toolbar{ justify-self:stretch; justify-content:flex-start; width:100%; }
+  }
+
+  .primary,.danger,.util{ padding:10px 14px; border:0; border-radius:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  .primary{ background:#3a9ff5; color:#fff } .danger{ background:#e5484d; color:#fff } .util{ background:transparent; border:1px solid #2a313b; color:#e8e9ea }
+  .danger:disabled,.primary:disabled,.util:disabled{ opacity:.6; cursor:not-allowed }
+
+  .filters-wrapper{ position:relative }
+  .dropdown{ position:absolute; right:0; top:44px; z-index:10; background:#10141b; border:1px solid #2a313b; border-radius:12px; padding:10px; width:min(360px,92vw); display:none; box-shadow:0 10px 30px rgba(0,0,0,.3) }
+  .dropdown.show{ display:block }
+
+  .grid{ margin-top:8px; display:grid; gap:12px; grid-template-columns:repeat(4,minmax(0,1fr)) }
+  @media (max-width:920px){ .grid{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
+  @media (max-width:520px){ .grid{ grid-template-columns:1fr } }
+  .item{ position:relative }
+  .copy-btn{
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid #2a313b; background:#161a21; color:#e8e9ea;
+    cursor:pointer; text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px;
+    transition:background .15s,border-color .15s,transform .02s,box-shadow .15s;
+  }
+  .copy-btn:hover{ background:#1a1f27; border-color:#3a9ff5 } .copy-btn:active{ transform:translateY(1px) }
+  .leftcol{ display:grid; gap:6px; min-width:0 }
+  .title{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .hint{ font-size:12px; color:#a7b1c2 }
+  .tags{ display:flex; gap:6px; flex-wrap:wrap }
+  .tag{ font-size:11px; padding:2px 6px; border:1px solid #2a313b; border-radius:999px; color:#a7b1c2 }
+
+  .control{
+    padding:10px 34px 10px 12px; border-radius:10px; border:1px solid #2a313b;
+    background:#0e1116; color:#e8e9ea; outline:none;
+  }
+  .control:focus{ border-color:#3a9ff5; box-shadow:0 0 0 3px rgba(58,159,245,.25) }
+
+  .search-wrap { position: relative; }
+  .search { width: 260px; max-width: 60vw; }
+  .clear-btn{
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    border:0; background:transparent; color:#a7b1c2; width:20px; height:20px; border-radius:6px; cursor:pointer; display:none; align-items:center; justify-content:center;
+  }
+  .clear-btn:hover{ color:#fff } .clear-btn.show{ display:inline-flex }
+
+  .dlg-grid .row .control{ width:100% }
+  textarea.control{ min-height:120px; resize:vertical }
+
+  .ctxmenu{
+    position:absolute; top:6px; right:6px; z-index:20; min-width:180px;
+    background:#10141b; border:1px solid #2a313b; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.3);
+    padding:6px; display:none;
+  }
+  .ctxmenu.show{ display:block }
+  .ctxmenu .row{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; user-select:none }
+  .ctxmenu .row:hover{ background:#181d25 }
+  .ctxmenu .row input{ width:16px; height:16px; cursor:pointer }
+  .ctxmenu hr{ border:0; border-top:1px solid #2a313b; margin:6px 0 }
+  .ctxmenu .danger-act{ color:#ffb3b6 }
+  .ctxmenu .small{ font-size:12px; color:#a7b1c2; margin:4px 8px 2px }
+
+  .dropzone{
+    border:1px dashed #2a313b; border-radius:10px; background:#0e1116;
+    padding:14px; text-align:center; cursor:pointer;
+  }
+  .dropzone:hover, .dropzone.dz-hover{ border-color:#3a9ff5; box-shadow:0 0 0 3px rgba(58,159,245,.25) }
+  .dz-row{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:8px; color:#a7b1c2; font-size:13px }
+
+  .dragging{ opacity:.6; box-shadow:0 0 0 2px #3a9ff5 inset }
+  .drag-over{ outline:2px dashed #3a9ff5; outline-offset:2px }
+
+  .toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px); background:#0b0f14; border:1px solid #2a313b; color:#e8e9ea; padding:10px 14px; border-radius:12px; opacity:0; pointer-events:none; transition:opacity .25s,transform .25s; display:flex; gap:10px; align-items:center; font-size:14px }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0) }
+  dialog{ border:1px solid #2a313b; border-radius:12px; background:#10141b; color:#e8e9ea; padding:16px; width:min(720px,96vw) }
+  dialog::backdrop{ background:rgba(0,0,0,.55) }
+
+  mark { background:#264f78; color:#fff; border-radius:4px; padding:0 2px }
+
+  /* Compact */
+  body.compact .app{ padding:14px; border-radius:10px }
+  body.compact .toolbar{ gap:6px }
+  body.compact .primary, body.compact .danger, body.compact .util{ padding:8px 10px; border-radius:8px }
+  body.compact .search{ width:220px; max-width:55vw }
+  body.compact .control{ padding:8px 30px 8px 10px; border-radius:8px }
+  body.compact .copy-btn{ padding:8px 10px; border-radius:10px; gap:6px }
+  body.compact .leftcol{ gap:4px }
+  body.compact .tag{ font-size:10px; padding:1px 5px }
+  body.compact .grid{ gap:8px }
+  body.compact .ctxmenu{ border-radius:10px; padding:4px; min-width:160px }
+  body.compact .ctxmenu .row{ padding:5px 7px; border-radius:6px; gap:6px }
+  body.compact .toast{ padding:8px 10px; border-radius:10px }
+</style>
+</head>
+<body>
+  <main class="app" aria-labelledby="app-title">
+    <div class="header">
+      <div class="titlewrap">
+        <h1 id="app-title">Click-to-Copy Button Maker</h1>
+        <div class="muted">Right-click (or long-press) a card for its menu. Ctrl/Cmd+K focuses search; Enter copies first result.</div>
+      </div>
+      <div class="toolbar">
+        <div class="search-wrap">
+          <input id="search" class="control search" type="text" placeholder="Search title, tags, or text…" />
+          <button id="search-clear" class="clear-btn" type="button" aria-label="Clear search">×</button>
+        </div>
+        <div class="filters-wrapper">
+          <button id="filters-btn" class="util" type="button">Filters (0)</button>
+          <div id="filters-dd" class="dropdown" role="menu" aria-label="Filters">
+            <div class="small" id="filters-summary"></div>
+            <div id="filters-list" style="max-height:240px; overflow:auto; display:grid; gap:6px"></div>
+            <div style="display:flex; justify-content:space-between; gap:8px; margin-top:8px">
+              <button id="filters-mode-toggle" class="util" type="button" title="Toggle ALL/ANY"></button>
+              <div style="display:flex; gap:8px">
+                <button id="filters-select-all" class="util" type="button">Select all</button>
+                <button id="filters-clear" class="util" type="button">Clear</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button id="open-manage" class="primary" type="button">Add</button>
+        <button id="select-toggle" class="util" type="button" disabled>Select All</button>
+        <button id="delete-selected" class="danger" type="button" disabled>Delete Selected (0)</button>
+        <button id="compact-toggle" class="util" type="button" aria-pressed="false">Compact: Off</button>
+      </div>
+    </div>
+
+    <section>
+      <div id="grid" class="grid" role="list" aria-label="Copy buttons"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">
+    <span aria-hidden="true">📋</span>
+    <span id="toast-msg">Copied.</span>
+  </div>
+
+  <!-- Manage dialog -->
+  <dialog id="manage-dialog" aria-label="Add / Import / Export">
+    <form method="dialog" id="manage-form" class="dlg-grid">
+      <h3 style="margin:0">Add / Import / Export</h3>
+
+      <div class="row">
+        <label for="btn-title">Button title</label>
+        <input id="btn-title" class="control" type="text" maxlength="120" placeholder="e.g., API Key, Greeting, Email Signature" />
+      </div>
+      <div class="row">
+        <label for="btn-text">Text to copy</label>
+        <textarea id="btn-text" class="control" placeholder="Paste or type the text that should be copied when the button is clicked."></textarea>
+      </div>
+      <div class="row">
+        <label for="btn-tags">Filters (comma-separated)</label>
+        <input id="btn-tags" class="control" type="text" placeholder="e.g., work, personal, snippets" />
+      </div>
+
+      <div class="row">
+        <label>Import (Drag & Drop or File)</label>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drag a JSON file here or click to choose">
+          <div>Drag & drop your exported <strong>.json</strong> here,<br/>or <u>click to choose</u>.</div>
+          <div class="dz-row">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input id="dedupe-file" type="checkbox" checked />
+              <span>Skip duplicates by title</span>
+            </label>
+          </div>
+        </div>
+        <input id="file-input" class="hidden" type="file" accept="application/json,.json" />
+      </div>
+
+      <div class="dlg-actions" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:10px;align-items:center">
+          <button id="create" class="primary" value="create" type="button">Create</button>
+          <span class="small">Tip: Ctrl/Cmd + Enter</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button id="import-paste" class="util" type="button">Import (Paste)</button>
+          <button id="import" class="util" type="button">Import (File)</button>
+          <button id="export" class="util" type="button">Export (Download)</button>
+          <button id="export-copy" class="util" type="button">Export (Copy JSON)</button>
+          <button id="clear-all" class="util" type="button">Clear All</button>
+          <button id="close-manage" class="util" type="button">Close</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Rename dialog -->
+  <dialog id="rename-dialog">
+    <form method="dialog" class="dlg-grid" id="rename-form">
+      <h3 style="margin:0">Rename button</h3>
+      <input id="rename-input" class="control" type="text" maxlength="120" autocomplete="off" />
+      <div class="small">Only the title is changed. (Text remains the same.)</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="rename-cancel" value="cancel" class="util" type="button">Cancel</button>
+        <button id="rename-save" class="primary" value="ok" type="button">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Edit tags dialog -->
+  <dialog id="tags-dialog">
+    <form method="dialog" class="dlg-grid" id="tags-form">
+      <h3 style="margin:0">Edit tags</h3>
+      <input id="tags-input" class="control" type="text" placeholder="comma, separated, tags" />
+      <div class="small">Tags affect filtering. Use commas.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="tags-cancel" value="cancel" class="util" type="button">Cancel</button>
+        <button id="tags-save" class="primary" value="ok" type="button">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Import (Paste) dialog -->
+  <dialog id="paste-dialog">
+    <form method="dialog" class="dlg-grid" id="paste-form">
+      <h3 style="margin:0">Import from pasted JSON</h3>
+      <textarea id="paste-json" class="control" placeholder='[{"title":"Hello","text":"World","tags":["work","greet"]}]' style="min-height:160px"></textarea>
+      <label style="display:flex;gap:8px;align-items:center">
+        <input id="dedupe" type="checkbox" checked />
+        <span>Skip duplicates by title (case-insensitive)</span>
+      </label>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="paste-cancel" value="cancel" class="util" type="button">Cancel</button>
+        <button id="paste-import" class="primary" value="ok" type="button">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const ALLOW_DND = !IS_TOUCH;
+    const LONGPRESS_MS = 550, MOVE_TOL = 8;
+
+    const STORAGE_KEY='copyButtons:v2', SETTINGS_KEY='copyButtons:settings:v1';
+    const $ = (s)=>document.querySelector(s);
+
+    function openDialogSafe(dlg){ if(dlg?.showModal) dlg.showModal(); else { dlg?.setAttribute('open',''); document.body.style.overflow='hidden'; } }
+    function closeDialogSafe(dlg){ if(dlg?.close) dlg.close(); else { dlg?.removeAttribute('open'); document.body.style.overflow=''; } }
+
+    // Toolbar/search refs
+    const searchInput=$('#search'), searchClear=$('#search-clear');
+    const filtersBtn=$('#filters-btn'), filtersDd=$('#filters-dd'), filtersList=$('#filters-list'), filtersSummary=$('#filters-summary');
+    const filtersModeToggle=$('#filters-mode-toggle'), filtersSelectAllBtn=$('#filters-select-all'), filtersClearBtn=$('#filters-clear');
+    const openManageBtn=$('#open-manage'), selectToggleBtn=$('#select-toggle'), deleteSelectedBtn=$('#delete-selected'), compactBtn=$('#compact-toggle');
+    // Manage refs
+    const manageDlg=$('#manage-dialog'), titleInput=$('#btn-title'), textInput=$('#btn-text'), tagsCreateInput=$('#btn-tags');
+    const createBtn=$('#create'), closeManageBtn=$('#close-manage');
+    const exportBtn=$('#export'), exportCopyBtn=$('#export-copy'), importBtn=$('#import'), importPasteBtn=$('#import-paste'), clearBtn=$('#clear-all');
+    // File import
+    const dropzone=$('#dropzone'), fileInput=$('#file-input'), dedupeFileChk=$('#dedupe-file');
+    // Other dialogs
+    const renameDlg=$('#rename-dialog'), renameInput=$('#rename-input'), renameSaveBtn=$('#rename-save'), renameCancelBtn=$('#rename-cancel');
+    const tagsDlg=$('#tags-dialog'), tagsInput=$('#tags-input'), tagsSaveBtn=$('#tags-save'), tagsCancelBtn=$('#tags-cancel');
+    const pasteDlg=$('#paste-dialog'), pasteJSON=$('#paste-json'), dedupeChk=$('#dedupe'), pasteImportBtn=$('#paste-import'), pasteCancelBtn=$('#paste-cancel');
+
+    const grid=$('#grid'), toast=$('#toast'), toastMsg=$('#toast-msg');
+
+    let counter=1; let state=[]; let dragSrcId=null; let renameTargetId=null; let editTagsTargetId=null;
+    const selectedIds=new Set(); const activeFilters=new Set(); let settings={ filterMode:'all', compact:false }; let searchQuery='';
+
+    const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+    const sanitizeLabel=(s)=>(s||'').trim()||`Button ${counter}`;
+    const sanitizeText=(s)=>(s||'').replace(/\r\n/g,'\n');
+    const splitTags=(s)=>(s||'').split(/[,\n]/g).map(t=>t.trim()).filter(Boolean).slice(0,50);
+    const norm=(s)=>s.trim().toLowerCase();
+    function escapeHTML(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function highlightHTML(str,q){ if(!q) return escapeHTML(str); const esc=escapeHTML(str); const re=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'); return esc.replace(re,m=>`<mark>${escapeHTML(m)}</mark>`); }
+
+    function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{ showToast('Save failed.'); } }
+    function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return []; const arr=JSON.parse(raw); if(!Array.isArray(arr)) return [];
+      return arr.filter(x=>x&&typeof x.title==='string'&&typeof x.text==='string')
+                .map(x=>({id:String(x.id||uid()), title:x.title, text:x.text, tags:Array.isArray(x.tags)?x.tags.map(String).filter(Boolean):[]})); }catch{ return []; } }
+    function saveSettings(){ try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }catch{} }
+    function loadSettings(){ try{ const raw=localStorage.getItem(SETTINGS_KEY); if(!raw) return; const s=JSON.parse(raw);
+      if(s){ if(s.filterMode==='all'||s.filterMode==='any') settings.filterMode=s.filterMode; if(typeof s.compact==='boolean') settings.compact=s.compact; } }catch{} }
+
+    function showToast(msg){ toastMsg.textContent=msg; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),1500); }
+    async function copyToClipboard(text){
+      try{ await navigator.clipboard.writeText(text); return true; }
+      catch{
+        const ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.left='-9999px';
+        document.body.appendChild(ta); ta.select(); try{ const ok=document.execCommand('copy'); ta.remove(); return ok; }catch{ ta.remove(); return false; }
+      }
+    }
+    function updateDeleteSelectedBtn(){ const n=selectedIds.size; deleteSelectedBtn.textContent=`Delete Selected (${n})`; deleteSelectedBtn.disabled=n===0; updateSelectToggleBtn(); }
+    function updateSelectToggleBtn(){ const total=visibleItems().length; const n=selectedIds.size; const all= total>0 && n===total; selectToggleBtn.textContent=all?'Clear Selection':'Select All'; selectToggleBtn.disabled=total===0; }
+
+    function allTags(){ const map=new Map(); for(const it of state){ for(const t of (it.tags||[])){ const k=norm(t); if(!map.has(k)) map.set(k,t); } } return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1])); }
+    function rebuildFiltersUI(){
+      filtersList.innerHTML=''; const tags=allTags();
+      if(tags.length===0){ filtersList.innerHTML=`<div class="small" style="opacity:.8">No filters yet. Add tags when creating or editing.</div>`; }
+      else{
+        for(const [k,label] of tags){
+          const row=document.createElement('label'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.fontSize='14px';
+          const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=activeFilters.has(k);
+          cb.addEventListener('change',()=>{ if(cb.checked) activeFilters.add(k); else activeFilters.delete(k); applyFiltersAndRender(); });
+          const span=document.createElement('span'); span.textContent=label; row.appendChild(cb); row.appendChild(span); filtersList.appendChild(row);
+        }
+      }
+      updateFiltersSummary(); updateFilterModeButton();
+    }
+    function updateFiltersSummary(){ const count=activeFilters.size; filtersBtn.textContent=`Filters (${count})`; const list=[...activeFilters]; const modeTxt=settings.filterMode.toUpperCase(); filtersSummary.textContent=count?`Mode: ${modeTxt} · Active: ${list.join(', ')}`:`Mode: ${modeTxt} · No active filters.`; }
+    function updateFilterModeButton(){ filtersModeToggle.textContent=`Mode: ${settings.filterMode.toUpperCase()}`; }
+    function toggleFiltersDropdown(){ filtersDd.classList.toggle('show'); }
+    function closeFiltersDropdown(e){ if(!filtersDd.classList.contains('show')) return; const within=filtersDd.contains(e.target)||filtersBtn.contains(e.target); if(!within) filtersDd.classList.remove('show'); }
+    const filtersSelectAll=()=>{ for(const [k] of allTags()) activeFilters.add(k); rebuildFiltersUI(); applyFiltersAndRender(); }
+    const filtersClear=()=>{ activeFilters.clear(); rebuildFiltersUI(); applyFiltersAndRender(); }
+    const toggleFilterMode=()=>{ settings.filterMode=settings.filterMode==='all'?'any':'all'; saveSettings(); updateFilterModeButton(); applyFiltersAndRender(); }
+    function matchesActiveFilters(it){ if(activeFilters.size===0) return true; const set=new Set((it.tags||[]).map(norm)); if(settings.filterMode==='all'){ for(const f of activeFilters){ if(!set.has(f)) return false; } return true; } else { for(const f of activeFilters){ if(set.has(f)) return true; } return false; } }
+    function matchesSearch(it){ if(!searchQuery) return true; if(it.title.toLowerCase().includes(searchQuery)) return true; for(const tg of (it.tags||[])){ if(tg.toLowerCase().includes(searchQuery)) return true; } return (it.text||'').toLowerCase().includes(searchQuery); }
+    const visibleItems=()=>state.filter(it=>matchesActiveFilters(it)&&matchesSearch(it));
+
+    function indexOfId(id){ return state.findIndex(x=>x.id===id); }
+    function moveByIndex(from,to){ if(from===to||from<0||to<0||from>=state.length||to>=state.length) return false; const [m]=state.splice(from,1); state.splice(to,0,m); return true; }
+
+    function purgeStaleSelections(){
+      const idsInState = new Set(state.map(x=>x.id));
+      for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
+    }
+
+    function createItemEl(item){
+      const wrapper=document.createElement('div'); wrapper.className='item'; wrapper.dataset.id=item.id; if(!IS_TOUCH && ALLOW_DND) wrapper.draggable=true;
+
+      const btn=document.createElement('button'); btn.className='copy-btn'; btn.type='button'; btn.setAttribute('title',`Copy: ${item.title}`);
+      const left=document.createElement('div'); left.className='leftcol';
+      const titleEl=document.createElement('div'); titleEl.className='title';
+      titleEl.innerHTML = searchQuery ? highlightHTML(item.title, searchQuery) : escapeHTML(item.title);
+      left.appendChild(titleEl);
+
+      if(item.tags?.length){
+        const tagsEl=document.createElement('div'); tagsEl.className='tags';
+        for(const tg of item.tags.slice(0,6)){ const chip=document.createElement('span'); chip.className='tag'; chip.innerHTML = searchQuery?highlightHTML(tg,searchQuery):escapeHTML(tg); tagsEl.appendChild(chip); }
+        left.appendChild(tagsEl);
+      } else { const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
+
+      const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='⧉';
+      btn.appendChild(left); btn.appendChild(icon);
+
+      let suppressNextClick=false;
+      btn.addEventListener('click', async ()=>{ if(suppressNextClick){ suppressNextClick=false; return; } const ok=await copyToClipboard(item.text); showToast(ok?`Copied “${item.title}”.`:'Copy failed.'); });
+
+      const menu=document.createElement('div'); menu.className='ctxmenu'; menu.setAttribute('role','menu');
+
+      const selRow=document.createElement('label'); selRow.className='row'; selRow.setAttribute('role','menuitemcheckbox'); selRow.title='Select for bulk delete';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=selectedIds.has(item.id);
+      cb.addEventListener('click', (e)=>e.stopPropagation());
+      cb.addEventListener('change', ()=>{ if(cb.checked) selectedIds.add(item.id); else selectedIds.delete(item.id); updateDeleteSelectedBtn(); });
+      selRow.appendChild(cb); selRow.appendChild(document.createTextNode('Select'));
+
+      const renRow=document.createElement('div'); renRow.className='row'; renRow.textContent='Rename';
+      renRow.addEventListener('click', (e)=>{ e.stopPropagation(); closeAllMenus(); openRename(item.id); });
+
+      const tagsRow=document.createElement('div'); tagsRow.className='row'; tagsRow.textContent='Edit tags';
+      tagsRow.addEventListener('click', (e)=>{ e.stopPropagation(); closeAllMenus(); openEditTags(item.id); });
+
+      const delRow=document.createElement('div'); delRow.className='row danger-act'; delRow.textContent='Delete';
+      delRow.addEventListener('click', (e)=>{ e.stopPropagation(); closeAllMenus(); handleDelete(item.id); });
+
+      menu.appendChild(selRow);
+      menu.appendChild(renRow);
+      menu.appendChild(tagsRow);
+
+      if(!ALLOW_DND){
+        menu.appendChild(document.createElement('hr'));
+        const up=document.createElement('div'); up.className='row'; up.textContent='Move up';
+        up.addEventListener('click', (e)=>{ e.stopPropagation(); const idx=indexOfId(item.id); if(moveByIndex(idx,idx-1)){ save(); applyFiltersAndRender(); } closeAllMenus(); });
+        const down=document.createElement('div'); down.className='row'; down.textContent='Move down';
+        down.addEventListener('click', (e)=>{ e.stopPropagation(); const idx=indexOfId(item.id); if(moveByIndex(idx,idx+1)){ save(); applyFiltersAndRender(); } closeAllMenus(); });
+        menu.appendChild(up); menu.appendChild(down);
+      }
+
+      menu.appendChild(document.createElement('hr'));
+      menu.appendChild(delRow);
+
+      wrapper.addEventListener('contextmenu', (e)=>{ e.preventDefault(); closeAllMenus(); menu.style.top='6px'; menu.style.right='6px'; menu.classList.add('show'); });
+      enableTouchContext(wrapper, menu, ()=>{ suppressNextClick = true; });
+      menu.addEventListener('click', (e)=> e.stopPropagation());
+
+      if(!IS_TOUCH && ALLOW_DND){
+        wrapper.draggable=true;
+        wrapper.addEventListener('dragstart', (e)=>{ dragSrcId=item.id; wrapper.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', item.id); closeAllMenus(); });
+        wrapper.addEventListener('dragend', ()=>{ dragSrcId=null; wrapper.classList.remove('dragging'); grid.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); });
+        wrapper.addEventListener('dragover', (e)=>{ e.preventDefault(); if(wrapper.dataset.id!==dragSrcId) wrapper.classList.add('drag-over'); e.dataTransfer.dropEffect='move'; });
+        wrapper.addEventListener('dragleave', ()=> wrapper.classList.remove('drag-over'));
+        wrapper.addEventListener('drop', (e)=>{ e.preventDefault(); wrapper.classList.remove('drag-over'); const src=e.dataTransfer.getData('text/plain')||dragSrcId; const dst=wrapper.dataset.id;
+          if(!src||!dst||src===dst) return; const from=indexOfId(src), to=indexOfId(dst); if(moveByIndex(from,to)){ save(); applyFiltersAndRender(); showToast('Reordered.'); }
+        });
+      }
+
+      wrapper.appendChild(btn);
+      wrapper.appendChild(menu);
+      return wrapper;
+    }
+
+    function enableTouchContext(wrapper, menu, onOpen){
+      let tId=null, startX=0, startY=0, fired=false;
+      const clearTimer=()=>{ if(tId){ clearTimeout(tId); tId=null; } };
+      const openMenu=()=>{ closeAllMenus(); menu.style.top='6px'; menu.style.right='6px'; menu.classList.add('show'); fired=true; onOpen?.(); };
+      wrapper.addEventListener('pointerdown', (e)=>{ if(e.pointerType!=='touch') return; fired=false; startX=e.clientX; startY=e.clientY; clearTimer(); tId=setTimeout(openMenu, LONGPRESS_MS); }, { passive:true });
+      wrapper.addEventListener('pointermove', (e)=>{ if(e.pointerType!=='touch' || !tId) return; if(Math.abs(e.clientX-startX)>MOVE_TOL || Math.abs(e.clientY-startY)>MOVE_TOL){ clearTimer(); } }, { passive:true });
+      wrapper.addEventListener('pointerup', (e)=>{ if(e.pointerType!=='touch') return; clearTimer(); if(fired){ e.preventDefault?.(); } });
+      wrapper.addEventListener('pointercancel', (e)=>{ if(e.pointerType!=='touch') return; clearTimer(); });
+      window.addEventListener('scroll', clearTimer, { passive:true });
+    }
+
+    function closeAllMenus(){ document.querySelectorAll('.ctxmenu.show').forEach(m=>m.classList.remove('show')); }
+    document.addEventListener('click', (e)=>{ const inMenu = e.target.closest?.('.ctxmenu'); if(!inMenu) closeAllMenus(); closeFiltersDropdown(e); });
+    window.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAllMenus(); });
+    window.addEventListener('scroll', closeAllMenus, { passive:true });
+    window.addEventListener('resize', closeAllMenus);
+
+    function renderAll(){
+      grid.innerHTML='';
+      visibleItems().forEach(it=>grid.appendChild(createItemEl(it)));
+      const idsInState = new Set(state.map(x=>x.id));
+      for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
+      updateDeleteSelectedBtn();
+      rebuildFiltersUI();
+    }
+
+    function applyFiltersAndRender(){
+      grid.innerHTML='';
+      visibleItems().forEach(it=>grid.appendChild(createItemEl(it)));
+      const idsInState = new Set(state.map(x=>x.id));
+      for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
+      updateDeleteSelectedBtn();
+      updateFiltersSummary();
+      updateClearButton();
+    }
+
+    function handleCreate(){
+      const title=sanitizeLabel(titleInput.value);
+      const text=sanitizeText(textInput.value);
+      const tags=splitTags(tagsCreateInput.value);
+      if(!text){ showToast('Enter text to copy.'); textInput.focus(); return; }
+      state.push({ id:uid(), title, text, tags }); save(); applyFiltersAndRender();
+      titleInput.value=''; textInput.value=''; tagsCreateInput.value=''; titleInput.focus(); counter+=1; showToast('Added.');
+    }
+
+    function handleDelete(id){
+      const idx=state.findIndex(x=>x.id===id); if(idx<0) return;
+      if(!confirm(`Delete “${state[idx].title}”?`)) return;
+      selectedIds.delete(id);
+      state.splice(idx,1);
+      save(); applyFiltersAndRender(); showToast('Deleted.');
+    }
+
+    function handleDeleteSelected(){
+      const ids=[...selectedIds]; if(!ids.length) return;
+      if(!confirm(`Delete ${ids.length} selected item(s)?`)) return;
+      const set=new Set(ids);
+      state = state.filter(x=>!set.has(x.id));
+      selectedIds.clear();
+      save(); applyFiltersAndRender(); showToast('Deleted selected.');
+    }
+
+    function handleSelectToggle(){
+      const items=visibleItems();
+      const all=items.every(it=>selectedIds.has(it.id));
+      if(all){ for(const it of items) selectedIds.delete(it.id); }
+      else   { for(const it of items) selectedIds.add(it.id); }
+      updateDeleteSelectedBtn();
+    }
+
+    function openRename(id){ const it=state.find(x=>x.id===id); if(!it) return; renameTargetId=id; renameInput.value=it.title; openDialogSafe(renameDlg); renameInput.focus(); renameInput.select(); }
+    renameSaveBtn.addEventListener('click', ()=>{ const idx=indexOfId(renameTargetId); if(idx>=0){ state[idx].title=sanitizeLabel(renameInput.value); save(); applyFiltersAndRender(); showToast('Renamed.'); } closeDialogSafe(renameDlg); renameTargetId=null; });
+    renameCancelBtn.addEventListener('click', ()=> closeDialogSafe(renameDlg));
+
+    function openEditTags(id){ const it=state.find(x=>x.id===id); if(!it) return; editTagsTargetId=id; tagsInput.value=(it.tags||[]).join(', '); openDialogSafe(tagsDlg); tagsInput.focus(); tagsInput.select(); }
+    tagsSaveBtn.addEventListener('click', ()=>{ const idx=indexOfId(editTagsTargetId); if(idx>=0){ state[idx].tags=splitTags(tagsInput.value); save(); applyFiltersAndRender(); showToast('Tags updated.'); } closeDialogSafe(tagsDlg); editTagsTargetId=null; });
+    tagsCancelBtn.addEventListener('click', ()=> closeDialogSafe(tagsDlg));
+
+    function handleExportDownload(){
+      if(!state.length){ showToast('Nothing to export.'); return; }
+      const ts=new Date(), pad=(n)=>String(n).padStart(2,'0');
+      const fname=`buttons-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.json`;
+      const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showToast('Exported JSON.');
+    }
+    async function handleExportCopy(){ if(!state.length){ showToast('Nothing to export.'); return; } const ok=await copyToClipboard(JSON.stringify(state,null,2)); showToast(ok?'JSON copied to clipboard.':'Copy failed.'); }
+    const mergeImported=(arr,dedupe)=>{ if(!Array.isArray(arr)) return 0; const existing=new Set(state.map(x=>norm(x.title))); let added=0;
+      for(const x of arr){ if(!x||typeof x.title!=='string'||typeof x.text!=='string') continue; const title=x.title.trim(), text=sanitizeText(x.text); const tags=Array.isArray(x.tags)?x.tags.map(String).filter(Boolean):[]; if(!text) continue; if(dedupe && existing.has(norm(title))) continue; state.push({id:uid(), title, text, tags}); existing.add(norm(title)); added++; } return added; };
+
+    function openPasteImport(){ pasteJSON.value=''; dedupeChk.checked=true; openDialogSafe(pasteDlg); pasteJSON.focus(); }
+    pasteImportBtn.addEventListener('click', ()=>{ try{ const arr=JSON.parse(pasteJSON.value); const added=mergeImported(arr,dedupeChk.checked); if(!added){ showToast('No valid items imported.'); closeDialogSafe(pasteDlg); return; } save(); applyFiltersAndRender(); showToast(`Imported ${added} item(s).`); closeDialogSafe(pasteDlg); }catch{ showToast('Invalid JSON.'); } });
+    pasteCancelBtn.addEventListener('click', ()=> closeDialogSafe(pasteDlg));
+
+    function importFileButton(){ fileInput.value=''; fileInput.click(); }
+    importBtn.addEventListener('click', importFileButton);
+    dropzone.addEventListener('click', importFileButton);
+    dropzone.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); importFileButton(); } });
+    const setDzHover=(on)=> dropzone.classList.toggle('dz-hover', on);
+    ['dragenter','dragover'].forEach(ev=> dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); setDzHover(true); }));
+    ['dragleave','dragend','drop'].forEach(ev=> dropzone.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); if(ev!=='drop') setDzHover(false); }));
+    dropzone.addEventListener('drop', async (e)=>{ const f = e.dataTransfer?.files?.[0]; if(!f){ setDzHover(false); return; } await importFile(f, dedupeFileChk.checked); setDzHover(false); });
+    fileInput.addEventListener('change', async (e)=>{ const f = e.target.files && e.target.files[0]; if(!f) return; await importFile(f, dedupeFileChk.checked); fileInput.value=''; });
+
+    async function importFile(file, dedupe){
+      if(!/\.json$/i.test(file.name) && file.type !== 'application/json'){ showToast('Not a JSON file.'); return; }
+      try{
+        const text = await file.text();
+        const arr  = JSON.parse(text);
+        const added = mergeImported(arr, dedupe);
+        if(!added){ showToast('No valid items found.'); return; }
+        save(); applyFiltersAndRender(); showToast(`Imported ${added} item(s).`);
+      }catch{ showToast('Import failed. Invalid JSON.'); }
+    }
+
+    let searchTimer=null;
+    function updateClearButton(){ searchClear.classList.toggle('show', Boolean(searchInput.value.trim())); }
+    function setSearch(q){ searchInput.value=q; searchQuery=q.trim().toLowerCase(); updateClearButton(); applyFiltersAndRender(); }
+    searchInput.addEventListener('input', ()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>setSearch(searchInput.value),150); });
+    searchClear.addEventListener('click', ()=>{ setSearch(''); searchInput.focus(); });
+    searchInput.addEventListener('keydown', (e)=>{
+      if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); }
+      else if(e.key==='Enter'){ e.preventDefault(); const items=visibleItems(); if(items.length){ copyToClipboard(items[0].text).then(ok=>showToast(ok?`Copied “${items[0].title}”.`:'Copy failed.')); } else showToast('No results to copy.');
+      }
+    });
+
+    function applyCompactUI(){
+      document.body.classList.toggle('compact', settings.compact);
+      compactBtn.textContent = `Compact: ${settings.compact ? 'On' : 'Off'}`;
+      compactBtn.setAttribute('aria-pressed', String(settings.compact));
+    }
+    compactBtn.addEventListener('click', ()=>{ settings.compact = !settings.compact; saveSettings(); applyCompactUI(); });
+
+    openManageBtn.addEventListener('click', ()=>{ openDialogSafe(manageDlg); titleInput.focus(); });
+    createBtn.addEventListener('click', (e)=>{ e.preventDefault(); handleCreate(); });
+    closeManageBtn.addEventListener('click', (e)=>{ e.preventDefault(); closeDialogSafe(manageDlg); });
+
+    clearBtn.addEventListener('click', ()=>{ if(!state.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons?')) return; state=[]; selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); });
+    exportBtn.addEventListener('click', handleExportDownload);
+    exportCopyBtn.addEventListener('click', handleExportCopy);
+    importPasteBtn.addEventListener('click', openPasteImport);
+    selectToggleBtn.addEventListener('click', handleSelectToggle);
+    deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
+
+    window.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey||e.metaKey) && e.key === 'Enter' && (manageDlg.hasAttribute('open') || manageDlg.open)){ e.preventDefault(); handleCreate(); return; }
+      if(manageDlg.open||renameDlg.open||tagsDlg.open||pasteDlg.open) return;
+      const isCmdK=(e.key.toLowerCase()==='k')&&(e.metaKey||e.ctrlKey);
+      if(isCmdK){ e.preventDefault(); searchInput.focus(); searchInput.select(); }
+    });
+
+    window.addEventListener('DOMContentLoaded', ()=>{
+      loadSettings();
+      state=load();
+      applyCompactUI();
+      applyFiltersAndRender();
+      filtersModeToggle.textContent=`Mode: ${settings.filterMode.toUpperCase()}`;
+      updateClearButton();
+    });
+  </script>
+</body>
+</html>
