@@ -11,6 +11,7 @@
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.4;background:#0b0f10;color:#e8e9ea;min-height:100vh;padding:24px;display:grid;grid-template-rows:auto 1fr;place-items:start center}
   .app{width:min(1100px,100%);background:#12151a;border:1px solid #222831;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:20px;position:relative}
+
   /* Title first, toolbar second (always) */
   .header{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
   .titlewrap{display:flex;flex-direction:column;gap:4px}
@@ -59,8 +60,13 @@
   .clear-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#a7b1c2;width:20px;height:20px;border-radius:6px;cursor:pointer;display:none;align-items:center;justify-content:center}
   .clear-btn:hover{color:#fff}.clear-btn.show{display:inline-flex}
 
+  /* >>> Bigger, full-width dialog rows (fix) */
+  .dlg-grid .row{display:grid;grid-template-columns:1fr;gap:8px}
   .dlg-grid .row .control{width:100%}
-  textarea.control{min-height:120px;resize:vertical}
+  /* Taller textarea in Add dialog */
+  #manage-dialog textarea.control{min-height:180px;resize:vertical}
+  /* Keep other textareas reasonable too */
+  textarea.control{min-height:140px;resize:vertical}
 
   .ctxmenu{position:absolute;top:6px;right:6px;z-index:20;min-width:180px;background:#10141b;border:1px solid #2a313b;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.3);padding:6px;display:none}
   .ctxmenu.show{display:block}
@@ -86,6 +92,7 @@
   body.compact .primary,body.compact .danger,body.compact .util{padding:8px 10px;border-radius:8px}
   body.compact .search{width:220px;max-width:55vw}
   body.compact .control{padding:8px 30px 8px 10px;border-radius:8px}
+  body.compact #manage-dialog textarea.control{min-height:150px} /* a bit smaller but still comfy */
   body.compact .copy-btn{padding:8px 10px;border-radius:10px;gap:6px}
   body.compact .leftcol{gap:4px}
   body.compact .tag{font-size:10px;padding:1px 5px}
@@ -179,11 +186,13 @@
 
     <!-- Floating Export Popover -->
     <div id="export-popover" class="popover" role="menu" aria-label="Export options">
-      <button class="menu-btn" data-act="download-all" type="button">Download: Buttons + Tag Colors</button>
-      <button class="menu-btn" data-act="download-tags" type="button">Download: Tag Colors only</button>
+      <div class="small" style="opacity:.9;margin:2px 2px 6px">Buttons</div>
+      <button class="menu-btn" data-act="download-buttons" type="button">Download: Buttons (with tags & colors)</button>
+      <button class="menu-btn" data-act="copy-buttons" type="button">Copy JSON: Buttons (with tags & colors)</button>
       <hr/>
-      <button class="menu-btn" data-act="copy-all" type="button">Copy JSON: Buttons + Tag Colors</button>
-      <button class="menu-btn" data-act="copy-tags" type="button">Copy JSON: Tag Colors only</button>
+      <div class="small" style="opacity:.9;margin:2px 2px 6px">Tags</div>
+      <button class="menu-btn" data-act="download-tags" type="button">Download: Tags (with colors)</button>
+      <button class="menu-btn" data-act="copy-tags" type="button">Copy JSON: Tags (with colors)</button>
     </div>
   </dialog>
 
@@ -316,45 +325,21 @@
     function loadTagColors(){ try{ const raw=localStorage.getItem(TAGS_KEY); const t=raw?JSON.parse(raw):{}; tagColors=(t&&typeof t==='object'&&!Array.isArray(t))?t:{}; }catch{ tagColors={}; } }
     function saveTagColors(){ try{ localStorage.setItem(TAGS_KEY, JSON.stringify(tagColors)); }catch{} }
 
-    /* ---------- Search & Filter & Sort ---------- */
-    function matchesActiveFilters(it){
-      if(activeFilters.size===0) return true;
-      const set=new Set((it.tags||[]).map(norm));
-      if(settings.filterMode==='all'){ for(const f of activeFilters){ if(!set.has(f)) return false; } return true; }
-      for(const f of activeFilters){ if(set.has(f)) return true; } return false;
-    }
-    function matchesSearch(it){
-      if(!searchQuery) return true;
-      if(it.title.toLowerCase().includes(searchQuery)) return true;
-      if((it.tags||[]).some(t=>t.toLowerCase().includes(searchQuery))) return true;
-      return (it.text||'').toLowerCase().includes(searchQuery);
-    }
-    function scoreItem(it){
-      let s=0; if(matchesSearch(it)) s+=2; if(matchesActiveFilters(it)) s+=2;
-      const title=it.title.toLowerCase();
-      if(searchQuery){ if(title.startsWith(searchQuery)) s+=1; if((it.tags||[]).some(t=>t.toLowerCase()===searchQuery)) s+=0.5; }
-      return s;
-    }
-    function itemsForRender(){
-      return [...state].sort((a,b)=>{ const da=scoreItem(a), db=scoreItem(b); if(db!==da) return db-da; return a.title.localeCompare(b.title); });
-    }
+    /* Search / Filter / Sort */
+    function matchesActiveFilters(it){ if(activeFilters.size===0) return true; const set=new Set((it.tags||[]).map(norm)); if(settings.filterMode==='all'){ for(const f of activeFilters){ if(!set.has(f)) return false; } return true; } for(const f of activeFilters){ if(set.has(f)) return true; } return false; }
+    function matchesSearch(it){ if(!searchQuery) return true; if(it.title.toLowerCase().includes(searchQuery)) return true; if((it.tags||[]).some(t=>t.toLowerCase().includes(searchQuery))) return true; return (it.text||'').toLowerCase().includes(searchQuery); }
+    function scoreItem(it){ let s=0; if(matchesSearch(it)) s+=2; if(matchesActiveFilters(it)) s+=2; const title=it.title.toLowerCase(); if(searchQuery){ if(title.startsWith(searchQuery)) s+=1; if((it.tags||[]).some(t=>t.toLowerCase()===searchQuery)) s+=0.5; } return s; }
+    function itemsForRender(){ return [...state].sort((a,b)=>{ const da=scoreItem(a), db=scoreItem(b); if(db!==da) return db-da; return a.title.localeCompare(b.title); }); }
     function matchingItems(){ return state.filter(it=>matchesActiveFilters(it)&&matchesSearch(it)); }
 
-    /* ---------- Tags helpers ---------- */
-    function allTags(){
-      const map=new Map();
-      for(const it of state){ for(const t of (it.tags||[])){ const k=norm(t); if(!map.has(k)) map.set(k,t); } }
-      return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
-    }
+    /* Tags helpers */
+    function allTags(){ const map=new Map(); for(const it of state){ for(const t of (it.tags||[])){ const k=norm(t); if(!map.has(k)) map.set(k,t); } } return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1])); }
     function tagsArray(){ return allTags().map(([key,label])=>({ key, label, color: colorForTag(label) })); }
+    function tagsList(){ return allTags().map(([_,label])=>label); }
 
-    function populateTagDatalist(){
-      const tags=allTags().map(([_,l])=>l);
-      tagsDatalist.innerHTML=tags.map(t=>`<option value="${t}"></option>`).join('');
-    }
+    function populateTagDatalist(){ const tags=allTags().map(([_,l])=>l); tagsDatalist.innerHTML=tags.map(t=>`<option value="${t}"></option>`).join(''); }
     function renderTagChips(container,currentTags=[],onToggle){
-      container.innerHTML='';
-      const cur=new Set(currentTags.map(norm)); const tagPairs=allTags();
+      container.innerHTML=''; const cur=new Set(currentTags.map(norm)); const tagPairs=allTags();
       if(tagPairs.length===0){ const empty=document.createElement('div'); empty.className='small'; empty.style.opacity='.8'; empty.textContent='No tags yet. Add some above.'; container.appendChild(empty); return; }
       for(const [k,label] of tagPairs){
         const chip=document.createElement('button'); chip.type='button'; chip.className='tag-chip'; chip.setAttribute('aria-pressed',String(cur.has(k)));
@@ -381,7 +366,7 @@
       update();
     }
 
-    /* ---------- Cards ---------- */
+    /* Cards */
     function createItemEl(item){
       const wrapper=document.createElement('div'); wrapper.className='item'; wrapper.dataset.id=item.id; if(!IS_TOUCH&&ALLOW_DND) wrapper.draggable=true; wrapper.setAttribute('role','listitem');
       const btn=document.createElement('button'); btn.className='copy-btn'; btn.type='button'; btn.title=`Copy: ${item.title}`;
@@ -424,7 +409,7 @@
       return wrapper;
     }
 
-    /* ---------- Rendering ---------- */
+    /* Rendering */
     function renderAll(){
       grid.innerHTML=''; itemsForRender().forEach(it=>grid.appendChild(createItemEl(it)));
       const idsInState=new Set(state.map(x=>x.id)); for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
@@ -438,7 +423,7 @@
       updateDeleteSelectedBtn(); updateFiltersSummary(); updateClearButton();
     }
 
-    /* ---------- Filters UI ---------- */
+    /* Filters UI */
     function rebuildFiltersUI(){
       filtersList.innerHTML='';
       const tags=allTags();
@@ -463,7 +448,7 @@
     function toggleFiltersDropdown(){ filtersDd.classList.toggle('show'); }
     function closeFiltersDropdown(e){ if(!filtersDd.classList.contains('show')) return; const within=filtersDd.contains(e.target)||filtersBtn.contains(e.target); if(!within) filtersDd.classList.remove('show'); }
 
-    /* ---------- CRUD ---------- */
+    /* CRUD */
     function handleCreate(){
       const title=sanitizeLabel(titleInput.value);
       const text=sanitizeText(textInput.value);
@@ -490,7 +475,7 @@
       updateDeleteSelectedBtn();
     }
 
-    /* ---------- Rename / Edit Tags ---------- */
+    /* Rename / Edit Tags */
     function openRename(id){ const it=state.find(x=>x.id===id); if(!it) return; renameInput.value=it.title; renameDlg._target=id; openDialogSafe(renameDlg); renameInput.focus(); renameInput.select(); }
     renameSaveBtn.addEventListener('click',()=>{ const id=renameDlg._target; const idx=state.findIndex(x=>x.id===id); if(idx>=0){ state[idx].title=sanitizeLabel(renameInput.value); save(); applyFiltersAndRender(); showToast('Renamed.'); } closeDialogSafe(renameDlg); renameDlg._target=null; });
 
@@ -505,10 +490,10 @@
       closeDialogSafe(tagsDlg); tagsDlg._target=null; renderAll();
     });
 
-    /* ---------- Export ---------- */
+    /* -------- Export semantics -------- */
     function nowStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
-    function buildAllPayload(){ return { version:1, exportedAt:new Date().toISOString(), buttons: state, tags: tagsArray() }; }
-    function buildTagsPayload(){ return { version:1, exportedAt:new Date().toISOString(), tags: tagsArray() }; }
+    function buildButtonsPayload(){ return { version:1, exportedAt:new Date().toISOString(), buttons: state, tags: tagsArray() }; }       // buttons + tags + colors
+    function buildTagsPayload(){ return { version:1, exportedAt:new Date().toISOString(), tags: tagsArray() }; }                             // tags + colors
     function downloadJSON(obj,prefix){ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${prefix}-${nowStamp()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
     async function copyJSON(obj){ try{ await navigator.clipboard.writeText(JSON.stringify(obj,null,2)); return true; }catch{ return false; } }
 
@@ -524,14 +509,23 @@
     exportBtn.addEventListener('click',(e)=>{ e.preventDefault(); e.stopPropagation(); if(exportPop.classList.contains('show')) closeExportPopover(); else openExportPopover(exportBtn); });
     exportPop.addEventListener('click',async(e)=>{
       const act=e.target?.dataset?.act; if(!act) return;
-      if(act==='download-all'){ if(!state.length&&!allTags().length){ showToast('Nothing to export.'); return closeExportPopover(); } downloadJSON(buildAllPayload(),'export-all'); showToast('Downloaded buttons + tag colors.'); }
-      else if(act==='download-tags'){ if(!allTags().length){ showToast('No tags to export.'); return closeExportPopover(); } downloadJSON(buildTagsPayload(),'tag-colors'); showToast('Downloaded tag colors.'); }
-      else if(act==='copy-all'){ if(!state.length&&!allTags().length){ showToast('Nothing to copy.'); return closeExportPopover(); } showToast((await copyJSON(buildAllPayload()))?'Copied buttons + tag colors.':'Copy failed.'); }
-      else if(act==='copy-tags'){ if(!allTags().length){ showToast('No tags to copy.'); return closeExportPopover(); } showToast((await copyJSON(buildTagsPayload()))?'Copied tag colors.':'Copy failed.'); }
+      if(act==='download-buttons'){
+        if(!state.length){ showToast('No buttons to export.'); return closeExportPopover(); }
+        downloadJSON(buildButtonsPayload(),'buttons'); showToast('Downloaded buttons (with tags & colors).');
+      }else if(act==='copy-buttons'){
+        if(!state.length){ showToast('No buttons to copy.'); return closeExportPopover(); }
+        showToast((await copyJSON(buildButtonsPayload()))?'Copied buttons (with tags & colors).':'Copy failed.');
+      }else if(act==='download-tags'){
+        if(!allTags().length){ showToast('No tags to export.'); return closeExportPopover(); }
+        downloadJSON(buildTagsPayload(),'tags'); showToast('Downloaded tags (with colors).');
+      }else if(act==='copy-tags'){
+        if(!allTags().length){ showToast('No tags to copy.'); return closeExportPopover(); }
+        showToast((await copyJSON(buildTagsPayload()))?'Copied tags (with colors).':'Copy failed.');
+      }
       closeExportPopover();
     });
 
-    /* ---------- Smart Import ---------- */
+    /* Smart Import */
     function mergeButtons(arr,dedupe){
       if(!Array.isArray(arr)) return 0;
       const existing=new Set(state.map(x=>norm(x.title))); let added=0;
@@ -603,9 +597,9 @@
       }catch{ showToast('Import failed.'); }
     }
 
-    /* ---------- Color Editor ---------- */
+    /* Color editor */
     function buildColorRow(label){
-      const k=norm(label); const currentEffective=colorForTag(label); const currentOverride=normalizeHex(tagColors[k]||'');
+      const k=norm(label); const currentEffective=colorForTag(label); const currentOverride=(tagColors[k]&&normalizeHex(tagColors[k]))||'';
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns='auto 90px 120px auto'; row.style.alignItems='center'; row.style.gap='8px';
       const name=document.createElement('div'); name.textContent=label; name.style.whiteSpace='nowrap'; name.style.overflow='hidden'; name.style.textOverflow='ellipsis';
       const colorInput=document.createElement('input'); colorInput.type='color'; colorInput.value=currentOverride||currentEffective;
@@ -628,33 +622,26 @@
       openDialogSafe(colorsDlg);
     }
 
-    /* ---------- Dialog helpers ---------- */
+    /* Dialog helpers */
     function openDialogSafe(dlg){ if(dlg?.showModal) dlg.showModal(); else { dlg?.setAttribute('open',''); document.body.style.overflow='hidden'; } }
     function closeDialogSafe(dlg){ if(dlg?.close) dlg.close(); else { dlg?.removeAttribute('open'); document.body.style.overflow=''; } }
 
-    /* ---------- Wire up ---------- */
-    // Manage open
+    /* Wire up */
     openManageBtn.addEventListener('click',()=>{ openDialogSafe(manageDlg); titleInput.focus(); populateTagDatalist(); syncInputWithChips(tagsCreateInput,existingTags); });
-
-    // Create/Close/Clear
     createBtn.addEventListener('click',(e)=>{ e.preventDefault(); handleCreate(); });
     closeManageBtn.addEventListener('click',(e)=>{ e.preventDefault(); closeDialogSafe(manageDlg); });
     clearBtn.addEventListener('click',()=>{ if(!state.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons?')) return; state=[]; selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); renderAll(); });
 
-    // Selection
     selectToggleBtn.addEventListener('click',handleSelectToggle);
     deleteSelectedBtn.addEventListener('click',handleDeleteSelected);
 
-    // Filters
     filtersBtn.addEventListener('click',(e)=>{ e.stopPropagation(); toggleFiltersDropdown(); });
     filtersModeToggle.addEventListener('click',(e)=>{ e.stopPropagation(); toggleFilterMode(); });
     filtersSelectAllBtn.addEventListener('click',(e)=>{ e.stopPropagation(); filtersSelectAll(); });
     filtersClearBtn.addEventListener('click',(e)=>{ e.stopPropagation(); filtersClear(); });
 
-    // Colors
     openColorsBtn.addEventListener('click',openColorsDialog);
 
-    // Export outside click / esc / resize
     document.addEventListener('click',(e)=>{ closeFiltersDropdown(e); if(exportPop.classList.contains('show') && !isInsideExport(e)) closeExportPopover(); });
     window.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&(manageDlg.open)){ e.preventDefault(); handleCreate(); return; } if(e.key==='Escape'){ if(exportPop.classList.contains('show')) closeExportPopover(); if(filtersDd.classList.contains('show')) filtersDd.classList.remove('show'); } });
     window.addEventListener('scroll',()=>{ if(exportPop.classList.contains('show')) closeExportPopover(); },{passive:true});
