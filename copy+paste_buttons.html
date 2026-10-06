@@ -346,7 +346,8 @@
     /* Clipboard wrap: "$()" in a button's text is replaced by the current clipboard text */
     const WRAP_TOKEN='$()';
     const hasWrapToken=(text)=>String(text||'').includes(WRAP_TOKEN);
-    const fillWrapToken=(text,clip)=>String(text).split(WRAP_TOKEN).join(clip);
+    // Trim the clipboard's leading/trailing spaces and line breaks so $() fills in on the same line.
+    const fillWrapToken=(text,clip)=>String(text).split(WRAP_TOKEN).join(sanitizeText(clip).trim());
     async function writeAndToast(text,title,extra=''){ try{ await navigator.clipboard.writeText(text); showToast(`Copied “${title}”${extra}.`); }catch{ showToast('Copy failed.'); } }
     async function copyItem(item){
       if(!hasWrapToken(item.text)) return writeAndToast(item.text,item.title);
