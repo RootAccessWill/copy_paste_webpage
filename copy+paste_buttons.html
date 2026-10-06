@@ -167,6 +167,7 @@
       <div class="row">
         <label for="btn-text">Text to copy</label>
         <textarea id="btn-text" class="control" placeholder="Paste or type the text that should be copied when the button is clicked."></textarea>
+        <div class="small">Tip: put <code>$()</code> where your clipboard's current text should go. Clicking the button then copies this text with your clipboard wrapped inside it.</div>
       </div>
       <div class="row">
         <label for="btn-tags">Filters (comma-separated)</label>
@@ -242,6 +243,7 @@
       <div class="row">
         <label for="edit-text-input">Text to copy</label>
         <textarea id="edit-text-input" class="control"></textarea>
+        <div class="small"><code>$()</code> is replaced with your clipboard's current text when you click the button.</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button id="rename-cancel" class="util" type="button">Cancel</button>
@@ -274,6 +276,19 @@
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
         <button id="colors-cancel" class="util" type="button">Cancel</button>
         <button id="colors-save" class="primary" type="button">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Fallback when the browser won't let the page read the clipboard -->
+  <dialog id="wrap-dialog" aria-label="Paste text to wrap">
+    <form method="dialog" class="dlg-grid" id="wrap-form">
+      <h3 style="margin:0">Paste text to wrap</h3>
+      <div class="small">Your browser didn't allow reading the clipboard. Paste (Ctrl/Cmd+V) the text that should replace <code>$()</code> in “<span id="wrap-title"></span>”.</div>
+      <textarea id="wrap-input" class="control" style="width:100%;margin:8px 0"></textarea>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="wrap-cancel" class="util" type="button">Cancel</button>
+        <button id="wrap-run" class="primary" type="button">Copy</button>
       </div>
     </form>
   </dialog>
@@ -314,6 +329,7 @@
     const tagsDlg=$('#tags-dialog'), tagsInput=$('#tags-input'), tagsSaveBtn=$('#tags-save'), tagsCancelBtn=$('#tags-cancel'), editExistingTags=$('#edit-existing-tags');
     const colorsDlg=$('#colors-dialog'), colorsList=$('#colors-list'), colorsSaveBtn=$('#colors-save'), colorsCancelBtn=$('#colors-cancel');
 
+    const wrapDlg=$('#wrap-dialog'), wrapInput=$('#wrap-input'), wrapTitle=$('#wrap-title'), wrapRunBtn=$('#wrap-run'), wrapCancelBtn=$('#wrap-cancel');
     const grid=$('#grid'), toast=$('#toast'), toastMsg=$('#toast-msg'), tagsDatalist=$('#tags-datalist');
 
     let state=[]; let tagColors={}; let settings={filterMode:'all'};
@@ -326,6 +342,20 @@
     const splitTags=(s)=>(s||'').split(/[,\n]/g).map(t=>t.trim()).filter(Boolean).slice(0,50);
     const norm=(s)=>String(s||'').trim().toLowerCase();
     const PALETTE=['#3a9ff5','#7c5cff','#ef6d6d','#5ec16e','#f59e0b','#00c2d1','#e86ed0','#9dd163','#ef8d48','#4dd0e1','#b388ff','#7dd3fc','#f97393','#8bc34a','#f4b400'];
+
+    /* Clipboard wrap: "$()" in a button's text is replaced by the current clipboard text */
+    const WRAP_TOKEN='$()';
+    const hasWrapToken=(text)=>String(text||'').includes(WRAP_TOKEN);
+    const fillWrapToken=(text,clip)=>String(text).split(WRAP_TOKEN).join(clip);
+    async function writeAndToast(text,title,extra=''){ try{ await navigator.clipboard.writeText(text); showToast(`Copied “${title}”${extra}.`); }catch{ showToast('Copy failed.'); } }
+    async function copyItem(item){
+      if(!hasWrapToken(item.text)) return writeAndToast(item.text,item.title);
+      let clip=null;
+      try{ clip=await navigator.clipboard.readText(); }catch{}
+      if(clip===null){ openWrapDialog(item); return; }
+      return writeAndToast(fillWrapToken(item.text,clip),item.title,clip?' with clipboard wrapped in':' (clipboard was empty)');
+    }
+    function openWrapDialog(item){ wrapDlg._item=item; wrapTitle.textContent=item.title; wrapInput.value=''; openDialogSafe(wrapDlg); wrapInput.focus(); }
 
     function showToast(msg){ toastMsg.textContent=msg; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),1500); }
     function normalizeHex(hex){ if(!hex) return null; let s=String(hex).trim(); if(s[0]!=='#') s='#'+s; if(/^#([0-9a-fA-F]{3})$/.test(s)){const r=s[1],g=s[2],b=s[3]; s=`#${r}${r}${g}${g}${b}${b}`;} if(/^#([0-9a-fA-F]{6})$/.test(s)) return s.toLowerCase(); return null; }
@@ -402,12 +432,13 @@
         const tagsEl=document.createElement('div'); tagsEl.className='tags';
         for(const tg of item.tags.slice(0,6)){ const chip=document.createElement('span'); chip.className='tag'; chip.textContent=tg; chip.style.borderColor=colorForTag(tg)+'80'; tagsEl.appendChild(chip); }
         left.appendChild(tagsEl);
-      }else{ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
+      }else if(!hasWrapToken(item.text)){ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
+      if(hasWrapToken(item.text)){ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='⤷ Wraps your clipboard'; left.appendChild(hint); btn.title=`Copy: ${item.title} (wraps clipboard text into $())`; }
       const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='⧉';
       btn.append(left,icon);
       btn.addEventListener('click',async()=>{
         if(wrapper._suppressClick){ wrapper._suppressClick=false; return; }
-        try{ await navigator.clipboard.writeText(item.text); showToast(`Copied “${item.title}”.`);}catch{ showToast('Copy failed.'); }
+        await copyItem(item);
       });
 
       const menu=document.createElement('div'); menu.className='ctxmenu'; menu.setAttribute('role','menu');
@@ -694,13 +725,18 @@
     window.addEventListener('resize',()=>{ document.body.classList.toggle('compact', window.innerWidth<=740); if(exportPop.classList.contains('show')) closeExportPopover(); });
     window.addEventListener('orientationchange',()=>{ document.body.classList.toggle('compact', window.innerWidth<=740); });
 
+    // Clipboard-wrap fallback dialog
+    wrapRunBtn.addEventListener('click',async()=>{ const item=wrapDlg._item; closeDialogSafe(wrapDlg); wrapDlg._item=null; if(item) await writeAndToast(fillWrapToken(item.text,sanitizeText(wrapInput.value)),item.title,' with your text wrapped in'); });
+    wrapCancelBtn.addEventListener('click',()=>{ closeDialogSafe(wrapDlg); wrapDlg._item=null; });
+    wrapInput.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); wrapRunBtn.click(); } });
+
     // Search
     function updateClearButton(){ searchClear.classList.toggle('show', Boolean(searchInput.value.trim())); }
     function setSearch(q){ searchInput.value=q; searchQuery=q.trim().toLowerCase(); updateClearButton(); applyFiltersAndRender(); }
     let searchTimer=null;
     searchInput.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>setSearch(searchInput.value),150); });
     searchClear.addEventListener('click',()=>{ setSearch(''); searchInput.focus(); });
-    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); setSearch(searchInput.value); const items=itemsForRender(); if(items.length){ navigator.clipboard.writeText(items[0].text).then(()=>showToast(`Copied “${items[0].title}”.`),()=>showToast('Copy failed.')); } else showToast('No results to copy.'); } });
+    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); setSearch(searchInput.value); const items=itemsForRender(); if(items.length){ copyItem(items[0]); } else showToast('No results to copy.'); } });
 
     // Import dialog
     function openImportDialog(){ importJSON.value=''; importDedupe.checked=true; openDialogSafe(importDlg); importJSON.focus(); }
