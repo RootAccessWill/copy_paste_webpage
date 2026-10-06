@@ -54,6 +54,8 @@
   .leftcol{display:grid;gap:6px;min-width:0}
   .title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hint{font-size:12px;color:#a7b1c2}
+  .icons{display:flex;flex-direction:column;align-items:center;line-height:1.1;flex-shrink:0}
+  .wrap-icon{color:#3a9ff5;font-size:16px;font-weight:700}
   .tags{display:flex;gap:6px;flex-wrap:wrap}
   .tag{font-size:11px;padding:2px 6px;border:1px solid #2a313b;border-radius:999px;color:#cdd6e1}
 
@@ -433,9 +435,10 @@
         const tagsEl=document.createElement('div'); tagsEl.className='tags';
         for(const tg of item.tags.slice(0,6)){ const chip=document.createElement('span'); chip.className='tag'; chip.textContent=tg; chip.style.borderColor=colorForTag(tg)+'80'; tagsEl.appendChild(chip); }
         left.appendChild(tagsEl);
-      }else if(!hasWrapToken(item.text)){ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
-      if(hasWrapToken(item.text)){ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='⤷ Wraps your clipboard'; left.appendChild(hint); btn.title=`Copy: ${item.title} (wraps clipboard text into $())`; }
-      const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='⧉';
+      }else{ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
+      const icon=document.createElement('span'); icon.className='icons'; icon.setAttribute('aria-hidden','true');
+      if(hasWrapToken(item.text)){ const wrapIcon=document.createElement('span'); wrapIcon.className='wrap-icon'; wrapIcon.textContent='⤷'; icon.appendChild(wrapIcon); btn.title=`Copy: ${item.title} (wraps clipboard text into $())`; }
+      const copyIcon=document.createElement('span'); copyIcon.textContent='⧉'; icon.appendChild(copyIcon);
       btn.append(left,icon);
       btn.addEventListener('click',async()=>{
         if(wrapper._suppressClick){ wrapper._suppressClick=false; return; }
