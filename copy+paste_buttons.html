@@ -1,4 +1,3 @@
-<!-- File: public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,6 +17,7 @@
   .titlewrap{display:flex;flex-direction:column;gap:4px}
   h1{font-size:20px;margin:0}
   .muted{color:#a7b1c2;font-size:13px}
+  .small{font-size:12px;color:#a7b1c2}
   .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;width:100%;justify-content:flex-start}
 
   .primary,.danger,.util{padding:10px 14px;border:0;border-radius:12px;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -42,7 +42,13 @@
   @media (max-width:920px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:520px){.grid{grid-template-columns:1fr}}
   .item{position:relative}
-  .copy-btn{--accent:#2a313b;width:100%;padding:12px 14px;border-radius:12px;border:1px solid #2a313b;background:#161a21;color:#e8e9ea;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:background .15s,border-color .15s,transform .02s,box-shadow .15s}
+  .item.dragging{opacity:.5}
+  .item.drag-over .copy-btn{border-color:#3a9ff5;box-shadow:0 0 0 3px rgba(58,159,245,.35)}
+  .item.selected .copy-btn{border-color:#3a9ff5!important;background:#152233;box-shadow:0 0 0 2px #3a9ff5}
+  .sel-badge{display:none;position:absolute;top:-6px;left:-6px;width:20px;height:20px;border-radius:50%;background:#3a9ff5;color:#fff;font-size:12px;font-weight:700;align-items:center;justify-content:center;pointer-events:none;z-index:5}
+  .item.selected .sel-badge{display:inline-flex}
+  .empty-state{grid-column:1/-1;padding:24px;text-align:center;color:#a7b1c2;border:1px dashed #2a313b;border-radius:12px}
+  .copy-btn{--accent:#2a313b;-webkit-touch-callout:none;width:100%;padding:12px 14px;border-radius:12px;border:1px solid #2a313b;background:#161a21;color:#e8e9ea;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:background .15s,border-color .15s,transform .02s,box-shadow .15s}
   .copy-btn:hover{background:#1a1f27;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 30%,transparent)}
   .copy-btn:active{transform:translateY(1px)}
   .leftcol{display:grid;gap:6px;min-width:0}
@@ -108,7 +114,7 @@
     <div class="header">
       <div class="titlewrap">
         <h1 id="app-title">Click-to-Copy Button Maker</h1>
-        <div class="muted">Right-click (or long-press) a card for its menu. Ctrl/Cmd+K focuses search; Enter copies first result.</div>
+        <div class="muted">Right-click (or long-press) a card for its menu. Drag cards to reorder. Ctrl/Cmd+K focuses search; Enter copies first result.</div>
       </div>
       <div class="toolbar">
         <div class="search-wrap">
@@ -202,13 +208,13 @@
     <form method="dialog" id="import-form" class="dlg-grid">
       <h3 style="margin:0">Import</h3>
       <div class="row">
-        <label for="import-json">Paste JSON (from Export)</label>
-        <textarea id="import-json" class="control" placeholder='Paste JSON here…' style="min-height:160px"></textarea>
+        <label for="import-json">Paste JSON (from Export), CSV, <code>title|text|tags</code> lines, or one snippet per line</label>
+        <textarea id="import-json" class="control" placeholder='Paste here…' style="min-height:160px"></textarea>
       </div>
       <div class="row">
         <label>Or Drag & Drop / Choose File</label>
-        <div id="import-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drag a JSON file here or click to choose">
-          <div>Drag & drop your <strong>.json</strong> here,<br/>or <u>click to choose</u>.</div>
+        <div id="import-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drag a file here or click to choose">
+          <div>Drag & drop a <strong>.json</strong>, <strong>.csv</strong>, <strong>.tsv</strong> or <strong>.txt</strong> file here,<br/>or <u>click to choose</u>.</div>
           <div class="dz-row">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
               <input id="import-dedupe" type="checkbox" checked />
@@ -216,7 +222,7 @@
             </label>
           </div>
         </div>
-        <input id="import-file" class="hidden" type="file" accept="application/json,.json" />
+        <input id="import-file" class="hidden" type="file" accept="application/json,.json,.csv,.tsv,.txt,text/csv,text/plain" />
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button id="import-cancel" class="util" type="button">Close</button>
@@ -228,9 +234,15 @@
   <!-- Rename dialog -->
   <dialog id="rename-dialog">
     <form method="dialog" class="dlg-grid" id="rename-form">
-      <h3 style="margin:0">Rename button</h3>
-      <input id="rename-input" class="control" type="text" maxlength="120" autocomplete="off" />
-      <div class="small">Only the title is changed. (Text remains the same.)</div>
+      <h3 style="margin:0">Edit button</h3>
+      <div class="row">
+        <label for="rename-input">Button title</label>
+        <input id="rename-input" class="control" type="text" maxlength="120" autocomplete="off" />
+      </div>
+      <div class="row">
+        <label for="edit-text-input">Text to copy</label>
+        <textarea id="edit-text-input" class="control"></textarea>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button id="rename-cancel" class="util" type="button">Cancel</button>
         <button id="rename-save" class="primary" type="button">Save</button>
@@ -270,8 +282,9 @@
 
   <script>
     /* ---------- Utilities & State ---------- */
-    const IS_TOUCH=('ontouchstart'in window)||(navigator.maxTouchPoints>0);
-    const ALLOW_DND=!IS_TOUCH;
+    // Drag-to-reorder needs a mouse/trackpad; touchscreen laptops still have one.
+    const ALLOW_DND=window.matchMedia?window.matchMedia('(any-pointer: fine)').matches:true;
+    const LONG_PRESS_MS=500;
     const STORAGE_KEY='copyButtons:v2';
     const SETTINGS_KEY='copyButtons:settings:v1';
     const TAGS_KEY='copyButtons:tagColors:v1';
@@ -297,17 +310,18 @@
     const importDropzone=$('#import-dropzone'), importFile=$('#import-file'), importDedupe=$('#import-dedupe');
 
     // Other dialogs
-    const renameDlg=$('#rename-dialog'), renameInput=$('#rename-input'), renameSaveBtn=$('#rename-save'), renameCancelBtn=$('#rename-cancel');
+    const renameDlg=$('#rename-dialog'), renameInput=$('#rename-input'), editTextInput=$('#edit-text-input'), renameSaveBtn=$('#rename-save'), renameCancelBtn=$('#rename-cancel');
     const tagsDlg=$('#tags-dialog'), tagsInput=$('#tags-input'), tagsSaveBtn=$('#tags-save'), tagsCancelBtn=$('#tags-cancel'), editExistingTags=$('#edit-existing-tags');
     const colorsDlg=$('#colors-dialog'), colorsList=$('#colors-list'), colorsSaveBtn=$('#colors-save'), colorsCancelBtn=$('#colors-cancel');
 
     const grid=$('#grid'), toast=$('#toast'), toastMsg=$('#toast-msg'), tagsDatalist=$('#tags-datalist');
 
-    let counter=1; let state=[]; let tagColors={}; let settings={filterMode:'all'};
+    let state=[]; let tagColors={}; let settings={filterMode:'all'};
     const selectedIds=new Set(); const activeFilters=new Set(); let searchQuery='';
 
     const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
-    const sanitizeLabel=(s)=>(s||'').trim()||`Button ${counter}`;
+    function nextButtonNumber(){ let max=0; for(const it of state){ const m=/^Button (\d+)$/.exec(it.title); if(m) max=Math.max(max,Number(m[1])); } return max+1; }
+    const sanitizeLabel=(s)=>(s||'').trim()||`Button ${nextButtonNumber()}`;
     const sanitizeText=(s)=>(s||'').replace(/\r\n/g,'\n');
     const splitTags=(s)=>(s||'').split(/[,\n]/g).map(t=>t.trim()).filter(Boolean).slice(0,50);
     const norm=(s)=>String(s||'').trim().toLowerCase();
@@ -329,8 +343,9 @@
     /* Search / Filter / Sort */
     function matchesActiveFilters(it){ if(activeFilters.size===0) return true; const set=new Set((it.tags||[]).map(norm)); if(settings.filterMode==='all'){ for(const f of activeFilters){ if(!set.has(f)) return false; } return true; } for(const f of activeFilters){ if(set.has(f)) return true; } return false; }
     function matchesSearch(it){ if(!searchQuery) return true; if(it.title.toLowerCase().includes(searchQuery)) return true; if((it.tags||[]).some(t=>t.toLowerCase().includes(searchQuery))) return true; return (it.text||'').toLowerCase().includes(searchQuery); }
-    function scoreItem(it){ let s=0; if(matchesSearch(it)) s+=2; if(matchesActiveFilters(it)) s+=2; const title=it.title.toLowerCase(); if(searchQuery){ if(title.startsWith(searchQuery)) s+=1; if((it.tags||[]).some(t=>t.toLowerCase()===searchQuery)) s+=0.5; } return s; }
-    function itemsForRender(){ return [...state].sort((a,b)=>{ const da=scoreItem(a), db=scoreItem(b); if(db!==da) return db-da; return a.title.localeCompare(b.title); }); }
+    function scoreItem(it){ let s=0; const title=it.title.toLowerCase(); if(searchQuery){ if(title.startsWith(searchQuery)) s+=1; if((it.tags||[]).some(t=>t.toLowerCase()===searchQuery)) s+=0.5; } return s; }
+    // Hide non-matching cards; keep the user's manual order unless a search is ranking results.
+    function itemsForRender(){ const items=matchingItems(); if(!searchQuery) return items; const pos=new Map(state.map((x,i)=>[x.id,i])); return items.sort((a,b)=>{ const da=scoreItem(a), db=scoreItem(b); if(db!==da) return db-da; return pos.get(a.id)-pos.get(b.id); }); }
     function matchingItems(){ return state.filter(it=>matchesActiveFilters(it)&&matchesSearch(it)); }
 
     /* Tags helpers */
@@ -338,7 +353,7 @@
     function tagsArray(){ return allTags().map(([key,label])=>({ key, label, color: colorForTag(label) })); }
     function tagsList(){ return allTags().map(([_,label])=>label); }
 
-    function populateTagDatalist(){ const tags=allTags().map(([_,l])=>l); tagsDatalist.innerHTML=tags.map(t=>`<option value="${t}"></option>`).join(''); }
+    function populateTagDatalist(){ const tags=allTags().map(([_,l])=>l); tagsDatalist.replaceChildren(...tags.map(t=>{ const o=document.createElement('option'); o.value=t; return o; })); }
     function renderTagChips(container,currentTags=[],onToggle){
       container.innerHTML=''; const cur=new Set(currentTags.map(norm)); const tagPairs=allTags();
       if(tagPairs.length===0){ const empty=document.createElement('div'); empty.className='small'; empty.style.opacity='.8'; empty.textContent='No tags yet. Add some above.'; container.appendChild(empty); return; }
@@ -368,8 +383,17 @@
     }
 
     /* Cards */
+    function closeAllMenus(){ document.querySelectorAll('.ctxmenu.show').forEach(m=>m.classList.remove('show')); }
+    function setSelected(id,on){ if(on) selectedIds.add(id); else selectedIds.delete(id); syncSelectionUI(); }
+    function syncSelectionUI(){
+      grid.querySelectorAll('.item').forEach(el=>{ const on=selectedIds.has(el.dataset.id); el.classList.toggle('selected',on); const cb=el.querySelector('.ctxmenu input[type=checkbox]'); if(cb) cb.checked=on; });
+      updateDeleteSelectedBtn();
+    }
+
     function createItemEl(item){
-      const wrapper=document.createElement('div'); wrapper.className='item'; wrapper.dataset.id=item.id; if(!IS_TOUCH&&ALLOW_DND) wrapper.draggable=true; wrapper.setAttribute('role','listitem');
+      const wrapper=document.createElement('div'); wrapper.className='item'; wrapper.dataset.id=item.id; wrapper.setAttribute('role','listitem');
+      if(selectedIds.has(item.id)) wrapper.classList.add('selected');
+      const badge=document.createElement('span'); badge.className='sel-badge'; badge.setAttribute('aria-hidden','true'); badge.textContent='✓';
       const btn=document.createElement('button'); btn.className='copy-btn'; btn.type='button'; btn.title=`Copy: ${item.title}`;
       const accent=firstTagColor(item.tags); if(accent){ btn.style.setProperty('--accent',accent); btn.style.borderColor=accent+'55'; }
       const left=document.createElement('div'); left.className='leftcol';
@@ -381,46 +405,60 @@
       }else{ const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Click to copy'; left.appendChild(hint); }
       const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='⧉';
       btn.append(left,icon);
-      btn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(item.text); showToast(`Copied “${item.title}”.`);}catch{ showToast('Copy failed.'); } });
+      btn.addEventListener('click',async()=>{
+        if(wrapper._suppressClick){ wrapper._suppressClick=false; return; }
+        try{ await navigator.clipboard.writeText(item.text); showToast(`Copied “${item.title}”.`);}catch{ showToast('Copy failed.'); }
+      });
 
       const menu=document.createElement('div'); menu.className='ctxmenu'; menu.setAttribute('role','menu');
       const selRow=document.createElement('label'); selRow.className='row'; selRow.textContent='Select';
       const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=selectedIds.has(item.id);
       cb.addEventListener('click',(e)=>e.stopPropagation());
-      cb.addEventListener('change',()=>{ if(cb.checked) selectedIds.add(item.id); else selectedIds.delete(item.id); updateDeleteSelectedBtn(); });
+      cb.addEventListener('change',()=>setSelected(item.id,cb.checked));
       selRow.prepend(cb);
-      const renRow=document.createElement('div'); renRow.className='row'; renRow.textContent='Rename'; renRow.addEventListener('click',()=>openRename(item.id));
-      const tagsRow=document.createElement('div'); tagsRow.className='row'; tagsRow.textContent='Edit tags'; tagsRow.addEventListener('click',()=>openEditTags(item.id));
-      const delRow=document.createElement('div'); delRow.className='row danger-act'; delRow.textContent='Delete'; delRow.addEventListener('click',()=>handleDelete(item.id));
-      menu.append(selRow,renRow,tagsRow,document.createElement('hr'),delRow);
-      wrapper.addEventListener('contextmenu',(e)=>{ e.preventDefault(); document.querySelectorAll('.ctxmenu.show').forEach(m=>m.classList.remove('show')); menu.style.top='6px'; menu.style.right='6px'; menu.classList.add('show'); });
-      document.addEventListener('click',(e)=>{ const inMenu=e.target.closest?.('.ctxmenu'); if(!inMenu) menu.classList.remove('show'); });
+      const editRow=document.createElement('div'); editRow.className='row'; editRow.textContent='Edit title & text'; editRow.addEventListener('click',()=>{ closeAllMenus(); openRename(item.id); });
+      const tagsRow=document.createElement('div'); tagsRow.className='row'; tagsRow.textContent='Edit tags'; tagsRow.addEventListener('click',()=>{ closeAllMenus(); openEditTags(item.id); });
+      const delRow=document.createElement('div'); delRow.className='row danger-act'; delRow.textContent='Delete'; delRow.addEventListener('click',()=>{ closeAllMenus(); handleDelete(item.id); });
+      menu.append(selRow,editRow,tagsRow,document.createElement('hr'),delRow);
+      const openMenu=()=>{ closeAllMenus(); menu.classList.add('show'); };
+      wrapper.addEventListener('contextmenu',(e)=>{ e.preventDefault(); openMenu(); });
 
-      if(!IS_TOUCH&&ALLOW_DND){
+      // Long-press opens the menu on touch screens (iOS Safari never fires contextmenu).
+      let pressTimer=null, startX=0, startY=0;
+      const cancelPress=()=>{ clearTimeout(pressTimer); pressTimer=null; };
+      btn.addEventListener('pointerdown',(e)=>{ if(e.pointerType==='mouse') return; startX=e.clientX; startY=e.clientY; cancelPress(); pressTimer=setTimeout(()=>{ pressTimer=null; wrapper._suppressClick=true; openMenu(); },LONG_PRESS_MS); });
+      btn.addEventListener('pointermove',(e)=>{ if(pressTimer && Math.hypot(e.clientX-startX,e.clientY-startY)>10) cancelPress(); });
+      ['pointerup','pointercancel','pointerleave'].forEach(ev=>btn.addEventListener(ev,cancelPress));
+
+      if(ALLOW_DND){
         wrapper.draggable=true;
         wrapper.addEventListener('dragstart',(e)=>{ wrapper.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', item.id); });
         wrapper.addEventListener('dragend',()=>{ wrapper.classList.remove('dragging'); grid.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); });
         wrapper.addEventListener('dragover',(e)=>{ e.preventDefault(); wrapper.classList.add('drag-over'); e.dataTransfer.dropEffect='move'; });
         wrapper.addEventListener('dragleave',()=> wrapper.classList.remove('drag-over'));
         wrapper.addEventListener('drop',(e)=>{ e.preventDefault(); wrapper.classList.remove('drag-over'); const src=e.dataTransfer.getData('text/plain'); const dst=wrapper.dataset.id; if(!src||!dst||src===dst) return;
-          const from=state.findIndex(x=>x.id===src), to=state.findIndex(x=>x.id===dst); if(from<0||to<0) return; const [m]=state.splice(from,1); state.splice(to,0,m); save(); applyFiltersAndRender(); showToast('Reordered.'); });
+          const from=state.findIndex(x=>x.id===src), to=state.findIndex(x=>x.id===dst); if(from<0||to<0) return; const [m]=state.splice(from,1); state.splice(to,0,m); save(); applyFiltersAndRender();
+          showToast(searchQuery?'Reordered (search results are ranked; clear search to see saved order).':'Reordered.'); });
       }
 
-      wrapper.append(btn,menu);
+      wrapper.append(badge,btn,menu);
       return wrapper;
     }
 
     /* Rendering */
-    function renderAll(){
-      grid.innerHTML=''; itemsForRender().forEach(it=>grid.appendChild(createItemEl(it)));
+    function renderGrid(){
+      grid.innerHTML=''; const items=itemsForRender(); items.forEach(it=>grid.appendChild(createItemEl(it)));
+      if(!items.length){ const empty=document.createElement('div'); empty.className='empty-state'; empty.textContent=state.length?'No buttons match your search or filters.':'No buttons yet. Click “Add” to create one.'; grid.appendChild(empty); }
       const idsInState=new Set(state.map(x=>x.id)); for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
+    }
+    function renderAll(){
+      renderGrid();
       updateDeleteSelectedBtn(); rebuildFiltersUI(); populateTagDatalist();
       if(manageDlg.open){ syncInputWithChips(tagsCreateInput,existingTags); }
       if(tagsDlg.open){ syncInputWithChips(tagsInput,editExistingTags); }
     }
     function applyFiltersAndRender(){
-      grid.innerHTML=''; itemsForRender().forEach(it=>grid.appendChild(createItemEl(it)));
-      const idsInState=new Set(state.map(x=>x.id)); for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
+      renderGrid();
       updateDeleteSelectedBtn(); updateFiltersSummary(); updateClearButton();
     }
 
@@ -456,7 +494,7 @@
       const tags=splitTags(tagsCreateInput.value);
       if(!text){ showToast('Enter text to copy.'); textInput.focus(); return; }
       state.push({id:uid(), title, text, tags}); save(); applyFiltersAndRender();
-      titleInput.value=''; textInput.value=''; tagsCreateInput.value=''; titleInput.focus(); counter+=1; showToast('Added.'); renderAll();
+      titleInput.value=''; textInput.value=''; tagsCreateInput.value=''; titleInput.focus(); showToast('Added.'); renderAll();
     }
     function handleDelete(id){
       const idx=state.findIndex(x=>x.id===id); if(idx<0) return;
@@ -469,16 +507,17 @@
       const set=new Set(ids); state=state.filter(x=>!set.has(x.id)); selectedIds.clear(); save(); applyFiltersAndRender(); showToast('Deleted selected.'); renderAll();
     }
     function updateDeleteSelectedBtn(){ const n=selectedIds.size; deleteSelectedBtn.textContent=`Delete Selected (${n})`; deleteSelectedBtn.disabled=n===0; updateSelectToggleBtn(); }
-    function updateSelectToggleBtn(){ const total=matchingItems().length; const n=selectedIds.size; const all= total>0 && n===total; selectToggleBtn.textContent=all?'Clear Selection':'Select All'; selectToggleBtn.disabled=total===0; }
+    function updateSelectToggleBtn(){ const items=matchingItems(); const total=items.length; const all= total>0 && items.every(it=>selectedIds.has(it.id)); selectToggleBtn.textContent=all?'Clear Selection':'Select All'; selectToggleBtn.disabled=total===0; }
     function handleSelectToggle(){
       const items=matchingItems(); const all=items.every(it=>selectedIds.has(it.id));
       if(all){ for(const it of items) selectedIds.delete(it.id); } else { for(const it of items) selectedIds.add(it.id); }
-      updateDeleteSelectedBtn();
+      syncSelectionUI();
     }
 
     /* Rename / Edit Tags */
-    function openRename(id){ const it=state.find(x=>x.id===id); if(!it) return; renameInput.value=it.title; renameDlg._target=id; openDialogSafe(renameDlg); renameInput.focus(); renameInput.select(); }
-    renameSaveBtn.addEventListener('click',()=>{ const id=renameDlg._target; const idx=state.findIndex(x=>x.id===id); if(idx>=0){ state[idx].title=sanitizeLabel(renameInput.value); save(); applyFiltersAndRender(); showToast('Renamed.'); } closeDialogSafe(renameDlg); renameDlg._target=null; });
+    function openRename(id){ const it=state.find(x=>x.id===id); if(!it) return; renameInput.value=it.title; editTextInput.value=it.text; renameDlg._target=id; openDialogSafe(renameDlg); renameInput.focus(); renameInput.select(); }
+    renameSaveBtn.addEventListener('click',()=>{ const id=renameDlg._target; const idx=state.findIndex(x=>x.id===id); if(idx>=0){ const text=sanitizeText(editTextInput.value); if(!text){ showToast('Enter text to copy.'); editTextInput.focus(); return; } state[idx].title=renameInput.value.trim()||state[idx].title; state[idx].text=text; save(); applyFiltersAndRender(); showToast('Saved.'); } closeDialogSafe(renameDlg); renameDlg._target=null; });
+    renameCancelBtn.addEventListener('click',()=>{ closeDialogSafe(renameDlg); renameDlg._target=null; });
 
     function openEditTags(id){
       const it=state.find(x=>x.id===id); if(!it) return;
@@ -490,6 +529,7 @@
       if(idx>=0){ state[idx].tags=splitTags(tagsInput.value); save(); applyFiltersAndRender(); showToast('Tags updated.'); }
       closeDialogSafe(tagsDlg); tagsDlg._target=null; renderAll();
     });
+    tagsCancelBtn.addEventListener('click',()=>{ closeDialogSafe(tagsDlg); tagsDlg._target=null; });
 
     /* -------- Export semantics -------- */
     function nowStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
@@ -590,7 +630,7 @@
       return { addedButtons, colored };
     }
     async function importFileBlob(file,dedupe){
-      if(!/\.json$/i.test(file.name) && file.type!=='application/json'){ showToast('Not a JSON file.'); return; }
+      if(!/\.(json|csv|tsv|txt)$/i.test(file.name) && !/^(application\/json|text\/)/.test(file.type)){ showToast('Unsupported file. Use .json, .csv, .tsv or .txt.'); return; }
       try{
         const text=await file.text(); const { addedButtons, colored }=smartImport(text,dedupe);
         if(addedButtons===0 && colored===0){ showToast('No recognizable data found.'); return; }
@@ -600,17 +640,22 @@
 
     /* Color editor */
     function buildColorRow(label){
-      const k=norm(label); const currentEffective=colorForTag(label); const currentOverride=(tagColors[k]&&normalizeHex(tagColors[k]))||'';
+      const k=norm(label); const auto=autoColorFor(k); const currentOverride=(tagColors[k]&&normalizeHex(tagColors[k]))||'';
+      let useAuto=!currentOverride;
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns='auto 90px 120px auto'; row.style.alignItems='center'; row.style.gap='8px';
       const name=document.createElement('div'); name.textContent=label; name.style.whiteSpace='nowrap'; name.style.overflow='hidden'; name.style.textOverflow='ellipsis';
-      const colorInput=document.createElement('input'); colorInput.type='color'; colorInput.value=currentOverride||currentEffective;
-      const hexInput=document.createElement('input'); hexInput.className='control'; hexInput.placeholder='#rrggbb'; hexInput.value=currentOverride||currentEffective;
+      const colorInput=document.createElement('input'); colorInput.type='color'; colorInput.value=currentOverride||auto;
+      const hexInput=document.createElement('input'); hexInput.className='control'; hexInput.placeholder='#rrggbb'; hexInput.value=currentOverride||auto;
       const resetBtn=document.createElement('button'); resetBtn.type='button'; resetBtn.className='util'; resetBtn.textContent='Reset';
-      colorInput.addEventListener('input',()=>{ hexInput.value=colorInput.value.toLowerCase(); hexInput.setCustomValidity(''); hexInput.style.borderColor=''; });
-      hexInput.addEventListener('input',()=>{ const nh=normalizeHex(hexInput.value); if(nh){ colorInput.value=nh; hexInput.setCustomValidity(''); hexInput.style.borderColor=''; } else { hexInput.setCustomValidity('Invalid hex'); hexInput.style.borderColor='#e5484d'; } });
-      resetBtn.addEventListener('click',()=>{ delete tagColors[k]; colorInput.value=colorForTag(label); hexInput.value=colorInput.value; hexInput.setCustomValidity(''); hexInput.style.borderColor=''; });
+      colorInput.addEventListener('input',()=>{ useAuto=false; hexInput.value=colorInput.value.toLowerCase(); hexInput.setCustomValidity(''); hexInput.style.borderColor=''; });
+      hexInput.addEventListener('input',()=>{ useAuto=false; const nh=normalizeHex(hexInput.value); if(nh){ colorInput.value=nh; hexInput.setCustomValidity(''); hexInput.style.borderColor=''; } else { hexInput.setCustomValidity('Invalid hex'); hexInput.style.borderColor='#e5484d'; } });
+      // Reset is only applied on Save, so Cancel keeps the existing color.
+      resetBtn.addEventListener('click',()=>{ useAuto=true; colorInput.value=auto; hexInput.value=auto; hexInput.setCustomValidity(''); hexInput.style.borderColor=''; });
       row.append(name,colorInput,hexInput,resetBtn);
-      return { row, commit:()=>{ const nh=normalizeHex(hexInput.value); if(nh && tagColors[k]!==nh){ tagColors[k]=nh; return 1; } return 0; } };
+      return { row, commit:()=>{
+        if(useAuto){ if(k in tagColors){ delete tagColors[k]; return 1; } return 0; }
+        const nh=normalizeHex(hexInput.value); if(nh && tagColors[k]!==nh){ tagColors[k]=nh; return 1; } return 0;
+      } };
     }
     function openColorsDialog(){
       colorsList.innerHTML=''; const tags=allTags();
@@ -631,7 +676,7 @@
     openManageBtn.addEventListener('click',()=>{ openDialogSafe(manageDlg); titleInput.focus(); populateTagDatalist(); syncInputWithChips(tagsCreateInput,existingTags); });
     createBtn.addEventListener('click',(e)=>{ e.preventDefault(); handleCreate(); });
     closeManageBtn.addEventListener('click',(e)=>{ e.preventDefault(); closeDialogSafe(manageDlg); });
-    clearBtn.addEventListener('click',()=>{ if(!state.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons?')) return; state=[]; selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); renderAll(); });
+    clearBtn.addEventListener('click',()=>{ if(!state.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons and custom tag colors?')) return; state=[]; tagColors={}; saveTagColors(); selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); renderAll(); });
 
     selectToggleBtn.addEventListener('click',handleSelectToggle);
     deleteSelectedBtn.addEventListener('click',handleDeleteSelected);
@@ -643,8 +688,8 @@
 
     openColorsBtn.addEventListener('click',openColorsDialog);
 
-    document.addEventListener('click',(e)=>{ closeFiltersDropdown(e); if(exportPop.classList.contains('show') && !isInsideExport(e)) closeExportPopover(); });
-    window.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&(manageDlg.open)){ e.preventDefault(); handleCreate(); return; } if(e.key==='Escape'){ if(exportPop.classList.contains('show')) closeExportPopover(); if(filtersDd.classList.contains('show')) filtersDd.classList.remove('show'); } });
+    document.addEventListener('click',(e)=>{ if(!e.target.closest?.('.ctxmenu')) closeAllMenus(); closeFiltersDropdown(e); if(exportPop.classList.contains('show') && !isInsideExport(e)) closeExportPopover(); });
+    window.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&(manageDlg.open)){ e.preventDefault(); handleCreate(); return; } if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){ e.preventDefault(); searchInput.focus(); searchInput.select(); return; } if(e.key==='Escape'){ closeAllMenus(); if(exportPop.classList.contains('show')) closeExportPopover(); if(filtersDd.classList.contains('show')) filtersDd.classList.remove('show'); } });
     window.addEventListener('scroll',()=>{ if(exportPop.classList.contains('show')) closeExportPopover(); },{passive:true});
     window.addEventListener('resize',()=>{ document.body.classList.toggle('compact', window.innerWidth<=740); if(exportPop.classList.contains('show')) closeExportPopover(); });
     window.addEventListener('orientationchange',()=>{ document.body.classList.toggle('compact', window.innerWidth<=740); });
@@ -655,7 +700,7 @@
     let searchTimer=null;
     searchInput.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>setSearch(searchInput.value),150); });
     searchClear.addEventListener('click',()=>{ setSearch(''); searchInput.focus(); });
-    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); const items=matchingItems(); if(items.length){ navigator.clipboard.writeText(items[0].text).then(()=>showToast(`Copied “${items[0].title}”.`),()=>showToast('Copy failed.')); } else showToast('No results to copy.'); } });
+    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); setSearch(searchInput.value); const items=itemsForRender(); if(items.length){ navigator.clipboard.writeText(items[0].text).then(()=>showToast(`Copied “${items[0].title}”.`),()=>showToast('Copy failed.')); } else showToast('No results to copy.'); } });
 
     // Import dialog
     function openImportDialog(){ importJSON.value=''; importDedupe.checked=true; openDialogSafe(importDlg); importJSON.focus(); }

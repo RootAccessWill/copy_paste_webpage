@@ -1,10 +1,10 @@
-<!-- File: public/index.html -->
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Homepage</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
     <style>
       :root {
         --bg: #672F8A;
@@ -30,6 +30,15 @@
       .btn:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
       .btn:active { transform: translateY(1px); }
       .btn:focus { outline: none; }
+      .updates {
+        width: min(560px, 100%); margin-top: 1rem; padding: 1rem 1.25rem; text-align: left;
+        background: var(--btn-bg); border: 1px solid var(--btn-border); border-radius: 0.75rem;
+      }
+      .updates h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+      .updates h3 { margin: 0.75rem 0 0.25rem; font-size: 1rem; }
+      .updates time { font-weight: 400; }
+      .updates ul { margin: 0; padding-left: 1.25rem; }
+      .updates li { margin: 0.2rem 0; }
       .btn:focus-visible { /* why: visible keyboard focus for a11y */
         box-shadow: 0 0 0 3px color-mix(in oklab, var(--bg) 70%, var(--focus)), 0 0 0 5px var(--focus);
         border-color: var(--focus);
@@ -42,11 +51,31 @@
         <h1 id="welcome-heading">Welcome!</h1>
         <a
           class="btn"
-          href="https://ionfire.netlify.app/copy+paste_buttons.html"
+          href="copy+paste_buttons.html"
           aria-label="Go to the copy & paste buttons page"
         >
           Go to Buttons
         </a>
+
+        <section class="updates" aria-labelledby="updates-heading">
+          <h2 id="updates-heading">Updates</h2>
+          <h3>Patch notes · <time datetime="2026-10-06">Oct 6, 2026</time></h3>
+          <ul>
+            <li>Filters and search now hide buttons that don't match, and show a message when nothing does.</li>
+            <li>Drag-to-reorder now sticks, and works on touchscreen laptops too.</li>
+            <li>Ctrl/Cmd+K now jumps to the search box.</li>
+            <li>Long-press a button on a phone or tablet to open its menu.</li>
+            <li>Selected buttons are now highlighted with a check mark.</li>
+            <li>You can now edit a button's text, not just its title ("Edit title &amp; text" in the menu).</li>
+            <li>Cancel now works in the Edit and Edit tags windows.</li>
+            <li>Tag color "Reset" only applies when you click Save, and really goes back to the automatic color.</li>
+            <li>Import now accepts .csv, .tsv and .txt files, and the window says which formats work.</li>
+            <li>Clear All now also clears custom tag colors.</li>
+            <li>Default names ("Button 1", "Button 2"…) no longer repeat after reloading the page.</li>
+            <li>Fixed a slowdown that built up over time, and a security issue with imported tag names.</li>
+            <li>The "Go to Buttons" link works wherever the site is hosted, and the site's main address now opens this page.</li>
+          </ul>
+        </section>
       </div>
     </main>
   </body>
