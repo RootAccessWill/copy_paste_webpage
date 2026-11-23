@@ -57,6 +57,26 @@
   .icons{display:flex;flex-direction:column;align-items:center;line-height:1.1;flex-shrink:0}
   .wrap-icon{color:#3a9ff5;font-size:16px;font-weight:700}
   .tags{display:flex;gap:6px;flex-wrap:wrap}
+
+  /* Folders */
+  .folder{grid-column:1/-1;position:relative;border:1px solid #2a313b;border-radius:12px;background:#0f1318;transition:border-color .15s,box-shadow .15s}
+  .folder.drag-over{border-color:#3a9ff5;box-shadow:0 0 0 3px rgba(58,159,245,.35)}
+  .folder.dragging{opacity:.5}
+  .folder-head{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;user-select:none;border-radius:12px}
+  .folder-head:focus-visible{outline:2px solid #3a9ff5;outline-offset:-2px}
+  .folder-caret{display:inline-block;width:14px;color:#a7b1c2;transition:transform .15s}
+  .folder:not(.collapsed) .folder-caret{transform:rotate(90deg)}
+  .folder-name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .folder-count{font-size:12px;color:#a7b1c2;border:1px solid #2a313b;border-radius:999px;padding:1px 8px;white-space:nowrap}
+  .folder-more{border:0;background:transparent;color:#a7b1c2;font-size:18px;line-height:1;width:28px;height:28px;border-radius:8px;cursor:pointer}
+  .folder-more:hover{background:#181d25;color:#fff}
+  .folder-body{padding:0 12px 12px}
+  .folder-body .grid{margin-top:0}
+  .folder.collapsed .folder-body{display:none}
+  .folder-empty{grid-column:1/-1;padding:14px;text-align:center;color:#a7b1c2;border:1px dashed #2a313b;border-radius:10px;font-size:13px}
+  .unfiled-drop{grid-column:1/-1;display:none;padding:14px;text-align:center;color:#a7b1c2;border:1px dashed #2a313b;border-radius:12px;font-size:13px}
+  .unfiled-drop.drag-over{border-color:#3a9ff5;color:#e8e9ea;box-shadow:0 0 0 3px rgba(58,159,245,.25)}
+  body.drag-from-folder .unfiled-drop{display:block}
   .tag{font-size:11px;padding:2px 6px;border:1px solid #2a313b;border-radius:999px;color:#cdd6e1}
 
   .tag-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid #2a313b;cursor:pointer;font-size:12px}
@@ -116,7 +136,7 @@
     <div class="header">
       <div class="titlewrap">
         <h1 id="app-title">Click-to-Copy Button Maker</h1>
-        <div class="muted">Right-click (or long-press) a card for its menu. Drag cards to reorder. Ctrl/Cmd+K focuses search; Enter copies first result.</div>
+        <div class="muted">Right-click (or long-press) a card for its menu. Drag cards to reorder or into folders. Ctrl/Cmd+K focuses search; Enter copies first result.</div>
       </div>
       <div class="toolbar">
         <div class="search-wrap">
@@ -170,6 +190,13 @@
         <label for="btn-text">Text to copy</label>
         <textarea id="btn-text" class="control" placeholder="Paste or type the text that should be copied when the button is clicked."></textarea>
         <div class="small">Tip: put <code>$()</code> where your clipboard's current text should go. Clicking the button then copies this text with your clipboard wrapped inside it.</div>
+      </div>
+      <div class="row">
+        <label for="btn-folder">Folder</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="btn-folder" class="control" style="flex:1;min-width:0"></select>
+          <button id="new-folder" class="util" type="button" title="Create a folder">📁 New Folder</button>
+        </div>
       </div>
       <div class="row">
         <label for="btn-tags">Filters (comma-separated)</label>
@@ -295,6 +322,34 @@
     </form>
   </dialog>
 
+  <!-- New / rename folder dialog -->
+  <dialog id="folder-dialog" aria-label="Folder">
+    <form method="dialog" class="dlg-grid" id="folder-form">
+      <h3 style="margin:0" id="folder-dlg-title">New folder</h3>
+      <div class="row">
+        <label for="folder-name-input">Folder name</label>
+        <input id="folder-name-input" class="control" type="text" maxlength="80" autocomplete="off" placeholder="e.g., Work, Email replies" />
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="folder-cancel" class="util" type="button">Cancel</button>
+        <button id="folder-save" class="primary" type="button">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Move to folder dialog (works without drag and drop, e.g. on phones) -->
+  <dialog id="move-dialog" aria-label="Move to folder">
+    <form method="dialog" class="dlg-grid" id="move-form">
+      <h3 style="margin:0">Move to folder</h3>
+      <div class="small">Move “<span id="move-title"></span>” to:</div>
+      <select id="move-folder" class="control" style="width:100%;margin:8px 0"></select>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="move-cancel" class="util" type="button">Cancel</button>
+        <button id="move-save" class="primary" type="button">Move</button>
+      </div>
+    </form>
+  </dialog>
+
   <datalist id="tags-datalist"></datalist>
 
   <script>
@@ -305,6 +360,7 @@
     const STORAGE_KEY='copyButtons:v2';
     const SETTINGS_KEY='copyButtons:settings:v1';
     const TAGS_KEY='copyButtons:tagColors:v1';
+    const FOLDERS_KEY='copyButtons:folders:v1';
     const $=(s)=>document.querySelector(s);
 
     // Toolbar
@@ -332,9 +388,16 @@
     const colorsDlg=$('#colors-dialog'), colorsList=$('#colors-list'), colorsSaveBtn=$('#colors-save'), colorsCancelBtn=$('#colors-cancel');
 
     const wrapDlg=$('#wrap-dialog'), wrapInput=$('#wrap-input'), wrapTitle=$('#wrap-title'), wrapRunBtn=$('#wrap-run'), wrapCancelBtn=$('#wrap-cancel');
+    const btnFolderSel=$('#btn-folder'), newFolderBtn=$('#new-folder');
+    const folderDlg=$('#folder-dialog'), folderDlgTitle=$('#folder-dlg-title'), folderNameInput=$('#folder-name-input'), folderSaveBtn=$('#folder-save'), folderCancelBtn=$('#folder-cancel');
+    const moveDlg=$('#move-dialog'), moveTitle=$('#move-title'), moveFolderSel=$('#move-folder'), moveSaveBtn=$('#move-save'), moveCancelBtn=$('#move-cancel');
     const grid=$('#grid'), toast=$('#toast'), toastMsg=$('#toast-msg'), tagsDatalist=$('#tags-datalist');
 
     let state=[]; let tagColors={}; let settings={filterMode:'all'};
+    // Folders: [{id,name,collapsed}] in display order. Buttons point at one with item.folderId (null = no folder).
+    let folders=[];
+    // What is being dragged right now: {type:'button'|'folder', id}
+    let drag=null;
     const selectedIds=new Set(); const activeFilters=new Set(); let searchQuery='';
 
     const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
@@ -367,7 +430,10 @@
     function firstTagColor(tags){ return (tags&&tags.length)?colorForTag(tags[0]):null; }
 
     function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{} }
-    function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); const arr=raw?JSON.parse(raw):[]; return Array.isArray(arr)?arr.filter(x=>x&&typeof x.title==='string'&&typeof x.text==='string').map(x=>({id:String(x.id||uid()), title:x.title, text:x.text, tags:Array.isArray(x.tags)?x.tags.map(String).filter(Boolean):[]})):[]; }catch{ return []; } }
+    function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); const arr=raw?JSON.parse(raw):[]; return Array.isArray(arr)?arr.filter(x=>x&&typeof x.title==='string'&&typeof x.text==='string').map(x=>({id:String(x.id||uid()), title:x.title, text:x.text, tags:Array.isArray(x.tags)?x.tags.map(String).filter(Boolean):[], folderId:(x.folderId&&folderById(String(x.folderId)))?String(x.folderId):null})):[]; }catch{ return []; } }
+    function saveFolders(){ try{ localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders)); }catch{} }
+    function loadFolders(){ try{ const raw=localStorage.getItem(FOLDERS_KEY); const arr=raw?JSON.parse(raw):[]; folders=Array.isArray(arr)?arr.filter(x=>x&&typeof x.name==='string').map(x=>({id:String(x.id||uid()), name:x.name, collapsed:Boolean(x.collapsed)})):[]; }catch{ folders=[]; } }
+    const folderById=(id)=>id?folders.find(f=>f.id===id)||null:null;
     function saveSettings(){ try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }catch{} }
     function loadSettings(){ try{ const raw=localStorage.getItem(SETTINGS_KEY); const s=raw?JSON.parse(raw):null; if(s){ if(s.filterMode==='all'||s.filterMode==='any') settings.filterMode=s.filterMode; } }catch{} }
     function loadTagColors(){ try{ const raw=localStorage.getItem(TAGS_KEY); const t=raw?JSON.parse(raw):{}; tagColors=(t&&typeof t==='object'&&!Array.isArray(t))?t:{}; }catch{ tagColors={}; } }
@@ -375,11 +441,21 @@
 
     /* Search / Filter / Sort */
     function matchesActiveFilters(it){ if(activeFilters.size===0) return true; const set=new Set((it.tags||[]).map(norm)); if(settings.filterMode==='all'){ for(const f of activeFilters){ if(!set.has(f)) return false; } return true; } for(const f of activeFilters){ if(set.has(f)) return true; } return false; }
-    function matchesSearch(it){ if(!searchQuery) return true; if(it.title.toLowerCase().includes(searchQuery)) return true; if((it.tags||[]).some(t=>t.toLowerCase().includes(searchQuery))) return true; return (it.text||'').toLowerCase().includes(searchQuery); }
+    function matchesSearch(it){ if(!searchQuery) return true; if(it.title.toLowerCase().includes(searchQuery)) return true; const f=folderById(it.folderId); if(f&&f.name.toLowerCase().includes(searchQuery)) return true; if((it.tags||[]).some(t=>t.toLowerCase().includes(searchQuery))) return true; return (it.text||'').toLowerCase().includes(searchQuery); }
     function scoreItem(it){ let s=0; const title=it.title.toLowerCase(); if(searchQuery){ if(title.startsWith(searchQuery)) s+=1; if((it.tags||[]).some(t=>t.toLowerCase()===searchQuery)) s+=0.5; } return s; }
     // Hide non-matching cards; keep the user's manual order unless a search is ranking results.
     function itemsForRender(){ const items=matchingItems(); if(!searchQuery) return items; const pos=new Map(state.map((x,i)=>[x.id,i])); return items.sort((a,b)=>{ const da=scoreItem(a), db=scoreItem(b); if(db!==da) return db-da; return pos.get(a.id)-pos.get(b.id); }); }
     function matchingItems(){ return state.filter(it=>matchesActiveFilters(it)&&matchesSearch(it)); }
+    const isFiltering=()=>Boolean(searchQuery)||activeFilters.size>0;
+    // Split the visible buttons into folders (in folder order) and loose buttons, in the order they're shown.
+    function groupForRender(){
+      const items=itemsForRender(); const byFolder=new Map(); const loose=[];
+      for(const it of items){ const f=folderById(it.folderId); if(f){ if(!byFolder.has(f.id)) byFolder.set(f.id,[]); byFolder.get(f.id).push(it); } else loose.push(it); }
+      const groups=folders.map(f=>({folder:f, list:byFolder.get(f.id)||[]}));
+      // Collapsed folders are opened while searching/filtering, so every match is visible.
+      const ordered=[...groups.flatMap(g=>(g.folder.collapsed&&!isFiltering())?[]:g.list), ...loose];
+      return { items, groups, loose, ordered };
+    }
 
     /* Tags helpers */
     function allTags(){ const map=new Map(); for(const it of state){ for(const t of (it.tags||[])){ const k=norm(t); if(!map.has(k)) map.set(k,t); } } return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1])); }
@@ -454,7 +530,8 @@
       const editRow=document.createElement('div'); editRow.className='row'; editRow.textContent='Edit title & text'; editRow.addEventListener('click',()=>{ closeAllMenus(); openRename(item.id); });
       const tagsRow=document.createElement('div'); tagsRow.className='row'; tagsRow.textContent='Edit tags'; tagsRow.addEventListener('click',()=>{ closeAllMenus(); openEditTags(item.id); });
       const delRow=document.createElement('div'); delRow.className='row danger-act'; delRow.textContent='Delete'; delRow.addEventListener('click',()=>{ closeAllMenus(); handleDelete(item.id); });
-      menu.append(selRow,editRow,tagsRow,document.createElement('hr'),delRow);
+      const moveRow=document.createElement('div'); moveRow.className='row'; moveRow.textContent='Move to folder…'; moveRow.addEventListener('click',()=>{ closeAllMenus(); openMoveDialog(item.id); });
+      menu.append(selRow,editRow,tagsRow,moveRow,document.createElement('hr'),delRow);
       const openMenu=()=>{ closeAllMenus(); menu.classList.add('show'); };
       wrapper.addEventListener('contextmenu',(e)=>{ e.preventDefault(); openMenu(); });
 
@@ -467,13 +544,19 @@
 
       if(ALLOW_DND){
         wrapper.draggable=true;
-        wrapper.addEventListener('dragstart',(e)=>{ wrapper.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', item.id); });
-        wrapper.addEventListener('dragend',()=>{ wrapper.classList.remove('dragging'); grid.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); });
-        wrapper.addEventListener('dragover',(e)=>{ e.preventDefault(); wrapper.classList.add('drag-over'); e.dataTransfer.dropEffect='move'; });
+        wrapper.addEventListener('dragstart',(e)=>{ e.stopPropagation(); drag={type:'button',id:item.id}; wrapper.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', item.id);
+          // Show the "drop here to take it out" zone; deferred so the layout change doesn't cancel the drag.
+          if(folderById(item.folderId)) setTimeout(()=>{ if(drag) document.body.classList.add('drag-from-folder'); },0); });
+        wrapper.addEventListener('dragend',endDrag);
+        wrapper.addEventListener('dragover',(e)=>{ if(drag?.type!=='button') return; e.preventDefault(); e.stopPropagation(); clearDragOver(); wrapper.classList.add('drag-over'); e.dataTransfer.dropEffect='move'; });
         wrapper.addEventListener('dragleave',()=> wrapper.classList.remove('drag-over'));
-        wrapper.addEventListener('drop',(e)=>{ e.preventDefault(); wrapper.classList.remove('drag-over'); const src=e.dataTransfer.getData('text/plain'); const dst=wrapper.dataset.id; if(!src||!dst||src===dst) return;
-          const from=state.findIndex(x=>x.id===src), to=state.findIndex(x=>x.id===dst); if(from<0||to<0) return; const [m]=state.splice(from,1); state.splice(to,0,m); save(); applyFiltersAndRender();
-          showToast(searchQuery?'Reordered (search results are ranked; clear search to see saved order).':'Reordered.'); });
+        wrapper.addEventListener('drop',(e)=>{ if(drag?.type!=='button') return; e.preventDefault(); e.stopPropagation(); wrapper.classList.remove('drag-over'); const src=drag.id; const dst=wrapper.dataset.id; endDrag(); if(!src||!dst||src===dst) return;
+          const from=state.findIndex(x=>x.id===src), to=state.findIndex(x=>x.id===dst); if(from<0||to<0) return; const [m]=state.splice(from,1);
+          // Dropping on a card puts the button next to it, in the same folder.
+          const prevFolder=m.folderId||null, newFolder=state.find(x=>x.id===dst)?.folderId||null; m.folderId=newFolder;
+          state.splice(to,0,m); save(); applyFiltersAndRender();
+          if(prevFolder!==newFolder) showToast(newFolder?`Moved to “${folderById(newFolder).name}”.`:'Moved out of the folder.');
+          else showToast(searchQuery?'Reordered (search results are ranked; clear search to see saved order).':'Reordered.'); });
       }
 
       wrapper.append(badge,btn,menu);
@@ -481,14 +564,68 @@
     }
 
     /* Rendering */
+    function createFolderEl(f,list,filtering){
+      const el=document.createElement('div'); el.className='folder'; el.dataset.folderId=f.id; el.setAttribute('role','group'); el.setAttribute('aria-label',`Folder: ${f.name}`);
+      el.classList.toggle('collapsed', f.collapsed&&!filtering);
+      const head=document.createElement('div'); head.className='folder-head'; head.tabIndex=0; head.setAttribute('role','button');
+      const caret=document.createElement('span'); caret.className='folder-caret'; caret.setAttribute('aria-hidden','true'); caret.textContent='▸';
+      const icon=document.createElement('span'); icon.setAttribute('aria-hidden','true'); icon.textContent='📁';
+      const name=document.createElement('span'); name.className='folder-name'; name.textContent=f.name;
+      const total=state.filter(x=>x.folderId===f.id).length;
+      const count=document.createElement('span'); count.className='folder-count'; count.textContent=filtering?`${list.length} of ${total}`:String(total); count.title=`${total} button(s)`;
+      const more=document.createElement('button'); more.type='button'; more.className='folder-more'; more.textContent='⋯'; more.setAttribute('aria-label',`Folder menu for ${f.name}`);
+      head.append(caret,icon,name,count,more);
+      const syncExpanded=()=>head.setAttribute('aria-expanded',String(!el.classList.contains('collapsed')));
+      syncExpanded();
+      const toggle=()=>{ const collapsed=!el.classList.contains('collapsed'); el.classList.toggle('collapsed',collapsed); syncExpanded();
+        // While searching/filtering folders are forced open; a click there only changes this view, not the saved state.
+        if(!filtering){ f.collapsed=collapsed; saveFolders(); } };
+      head.addEventListener('click',(e)=>{ if(e.target.closest('.folder-more')) return; toggle(); });
+      head.addEventListener('keydown',(e)=>{ if(e.target!==head) return; if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } });
+
+      const menu=document.createElement('div'); menu.className='ctxmenu'; menu.setAttribute('role','menu');
+      const renameRow=document.createElement('div'); renameRow.className='row'; renameRow.textContent='Rename folder'; renameRow.addEventListener('click',()=>{ closeAllMenus(); openFolderDialog(f.id); });
+      const delRow=document.createElement('div'); delRow.className='row danger-act'; delRow.textContent='Delete folder (keeps buttons)'; delRow.addEventListener('click',()=>{ closeAllMenus(); deleteFolder(f.id); });
+      menu.append(renameRow,document.createElement('hr'),delRow);
+      const openMenu=()=>{ closeAllMenus(); menu.classList.add('show'); };
+      more.addEventListener('click',(e)=>{ e.stopPropagation(); if(menu.classList.contains('show')) closeAllMenus(); else openMenu(); });
+      head.addEventListener('contextmenu',(e)=>{ e.preventDefault(); openMenu(); });
+
+      const body=document.createElement('div'); body.className='folder-body';
+      const inner=document.createElement('div'); inner.className='grid'; inner.setAttribute('role','list'); inner.setAttribute('aria-label',`Buttons in ${f.name}`);
+      list.forEach(it=>inner.appendChild(createItemEl(it)));
+      if(!list.length){ const empty=document.createElement('div'); empty.className='folder-empty'; empty.textContent=ALLOW_DND?'Empty folder. Drag buttons here.':'Empty folder. Use a button’s menu → “Move to folder…”.'; inner.appendChild(empty); }
+      body.appendChild(inner);
+      el.append(head,menu,body);
+
+      if(ALLOW_DND){
+        // Drag the header to reorder folders.
+        head.draggable=true;
+        head.addEventListener('dragstart',(e)=>{ drag={type:'folder',id:f.id}; el.classList.add('dragging'); closeAllMenus(); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', f.id); });
+        head.addEventListener('dragend',endDrag);
+        // Drop a button anywhere on the folder (open or closed) to put it inside.
+        el.addEventListener('dragover',(e)=>{ if(!drag || (drag.type==='folder'&&drag.id===f.id)) return; e.preventDefault(); e.stopPropagation(); clearDragOver(); el.classList.add('drag-over'); e.dataTransfer.dropEffect='move'; });
+        el.addEventListener('dragleave',(e)=>{ if(!el.contains(e.relatedTarget)) el.classList.remove('drag-over'); });
+        el.addEventListener('drop',(e)=>{ if(!drag || (drag.type==='folder'&&drag.id===f.id)) return; e.preventDefault(); e.stopPropagation(); const d=drag; endDrag();
+          if(d.type==='button') moveButtonToFolder(d.id,f.id);
+          else moveFolderBefore(d.id,f.id); });
+      }
+      return el;
+    }
+
     function renderGrid(){
-      grid.innerHTML=''; const items=itemsForRender(); items.forEach(it=>grid.appendChild(createItemEl(it)));
-      if(!items.length){ const empty=document.createElement('div'); empty.className='empty-state'; empty.textContent=state.length?'No buttons match your search or filters.':'No buttons yet. Click “Add” to create one.'; grid.appendChild(empty); }
+      grid.innerHTML=''; const filtering=isFiltering(); const { items, groups, loose }=groupForRender();
+      let shownFolders=0;
+      for(const g of groups){ if(filtering&&!g.list.length) continue; grid.appendChild(createFolderEl(g.folder,g.list,filtering)); shownFolders++; }
+      loose.forEach(it=>grid.appendChild(createItemEl(it)));
+      if(!items.length&&!shownFolders){ const empty=document.createElement('div'); empty.className='empty-state'; empty.textContent=state.length?'No buttons match your search or filters.':'No buttons yet. Click “Add” to create one.'; grid.appendChild(empty); }
+      if(folders.length&&ALLOW_DND){ const zone=document.createElement('div'); zone.className='unfiled-drop'; zone.textContent='Drop here to take the button out of its folder'; grid.appendChild(zone); }
       const idsInState=new Set(state.map(x=>x.id)); for(const id of [...selectedIds]) if(!idsInState.has(id)) selectedIds.delete(id);
     }
     function renderAll(){
       renderGrid();
       updateDeleteSelectedBtn(); rebuildFiltersUI(); populateTagDatalist();
+      fillFolderSelect(btnFolderSel, btnFolderSel._pending??btnFolderSel.value); btnFolderSel._pending=undefined;
       if(manageDlg.open){ syncInputWithChips(tagsCreateInput,existingTags); }
       if(tagsDlg.open){ syncInputWithChips(tagsInput,editExistingTags); }
     }
@@ -496,6 +633,64 @@
       renderGrid();
       updateDeleteSelectedBtn(); updateFiltersSummary(); updateClearButton();
     }
+
+    /* Drag and drop: shared helpers */
+    function clearDragOver(){ document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over')); }
+    function endDrag(){ drag=null; document.body.classList.remove('drag-from-folder'); document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging')); clearDragOver(); }
+    // Dropping on the page's empty space (or the "take out" zone) moves the button out of its folder, to the end.
+    if(ALLOW_DND){
+      grid.addEventListener('dragover',(e)=>{ if(drag?.type!=='button') return; e.preventDefault(); e.dataTransfer.dropEffect='move'; clearDragOver(); e.target.closest?.('.unfiled-drop')?.classList.add('drag-over'); });
+      grid.addEventListener('drop',(e)=>{ if(drag?.type!=='button') return; e.preventDefault(); const id=drag.id; endDrag(); const it=state.find(x=>x.id===id); if(it&&folderById(it.folderId)) moveButtonToFolder(id,null); });
+    }
+
+    /* Folders */
+    function moveButtonToFolder(id,folderId){
+      const idx=state.findIndex(x=>x.id===id); if(idx<0) return;
+      const [it]=state.splice(idx,1); const prev=it.folderId||null; it.folderId=folderId||null; state.push(it); save(); applyFiltersAndRender();
+      const f=folderById(folderId);
+      if(f) showToast(prev===f.id?`Moved to the end of “${f.name}”.`:`Moved to “${f.name}”${f.collapsed&&!isFiltering()?' (folder is closed)':''}.`);
+      else showToast(prev?'Moved out of the folder.':'Moved to the end.');
+    }
+    function moveFolderBefore(srcId,dstId){
+      const from=folders.findIndex(f=>f.id===srcId), to=folders.findIndex(f=>f.id===dstId); if(from<0||to<0||from===to) return;
+      const [m]=folders.splice(from,1); folders.splice(to,0,m); saveFolders(); applyFiltersAndRender(); showToast('Folders reordered.');
+    }
+    function createFolder(name){ const f={id:uid(), name, collapsed:false}; folders.push(f); saveFolders(); return f; }
+    function deleteFolder(id){
+      const f=folderById(id); if(!f) return; const n=state.filter(x=>x.folderId===id).length;
+      if(!confirm(n?`Delete folder “${f.name}”? Its ${n} button(s) will move out of the folder, not be deleted.`:`Delete folder “${f.name}”?`)) return;
+      for(const it of state) if(it.folderId===id) it.folderId=null;
+      folders=folders.filter(x=>x.id!==id); save(); saveFolders(); renderAll(); showToast('Folder deleted.');
+    }
+    function fillFolderSelect(sel,value){
+      const opts=[['','No folder'],...folders.map(f=>[f.id,f.name])];
+      sel.replaceChildren(...opts.map(([v,label])=>{ const o=document.createElement('option'); o.value=v; o.textContent=v?`📁 ${label}`:label; return o; }));
+      sel.value=folderById(value)?value:'';
+    }
+    function openFolderDialog(id=null){
+      const f=folderById(id); folderDlg._target=f?f.id:null;
+      folderDlgTitle.textContent=f?'Rename folder':'New folder'; folderSaveBtn.textContent=f?'Save':'Create'; folderNameInput.value=f?f.name:'';
+      openDialogSafe(folderDlg); folderNameInput.focus(); folderNameInput.select();
+    }
+    function saveFolderDialog(){
+      const name=folderNameInput.value.trim(); if(!name){ showToast('Enter a folder name.'); folderNameInput.focus(); return; }
+      const f=folderById(folderDlg._target);
+      if(f){ f.name=name; saveFolders(); showToast('Folder renamed.'); }
+      else{ const nf=createFolder(name); if(manageDlg.open) btnFolderSel._pending=nf.id; showToast(`Folder “${name}” created.`); }
+      closeDialogSafe(folderDlg); folderDlg._target=null; renderAll();
+    }
+    folderSaveBtn.addEventListener('click',saveFolderDialog);
+    folderCancelBtn.addEventListener('click',()=>{ closeDialogSafe(folderDlg); folderDlg._target=null; });
+    folderNameInput.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); saveFolderDialog(); } });
+    newFolderBtn.addEventListener('click',()=>openFolderDialog());
+
+    function openMoveDialog(id){
+      const it=state.find(x=>x.id===id); if(!it) return;
+      if(!folders.length){ showToast('No folders yet. Create one with Add → New Folder.'); return; }
+      moveDlg._target=id; moveTitle.textContent=it.title; fillFolderSelect(moveFolderSel,it.folderId); openDialogSafe(moveDlg); moveFolderSel.focus();
+    }
+    moveSaveBtn.addEventListener('click',()=>{ const id=moveDlg._target; closeDialogSafe(moveDlg); moveDlg._target=null; const it=state.find(x=>x.id===id); if(!it) return; const to=moveFolderSel.value||null; if((it.folderId||null)===to){ showToast('Already there.'); return; } moveButtonToFolder(id,to); });
+    moveCancelBtn.addEventListener('click',()=>{ closeDialogSafe(moveDlg); moveDlg._target=null; });
 
     /* Filters UI */
     function rebuildFiltersUI(){
@@ -528,8 +723,10 @@
       const text=sanitizeText(textInput.value);
       const tags=splitTags(tagsCreateInput.value);
       if(!text){ showToast('Enter text to copy.'); textInput.focus(); return; }
-      state.push({id:uid(), title, text, tags}); save(); applyFiltersAndRender();
-      titleInput.value=''; textInput.value=''; tagsCreateInput.value=''; titleInput.focus(); showToast('Added.'); renderAll();
+      const folder=folderById(btnFolderSel.value);
+      state.push({id:uid(), title, text, tags, folderId:folder?folder.id:null}); save(); applyFiltersAndRender();
+      // The folder choice stays, so several buttons can be added to the same folder in a row.
+      titleInput.value=''; textInput.value=''; tagsCreateInput.value=''; titleInput.focus(); showToast(folder?`Added to “${folder.name}”.`:'Added.'); renderAll();
     }
     function handleDelete(id){
       const idx=state.findIndex(x=>x.id===id); if(idx<0) return;
@@ -568,7 +765,7 @@
 
     /* -------- Export semantics -------- */
     function nowStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
-    function buildButtonsPayload(){ return { version:1, exportedAt:new Date().toISOString(), buttons: state, tags: tagsArray() }; }       // buttons + tags + colors
+    function buildButtonsPayload(){ return { version:2, exportedAt:new Date().toISOString(), buttons: state, folders: folders.map(f=>({id:f.id, name:f.name, collapsed:f.collapsed})), tags: tagsArray() }; }       // buttons + tags + colors
     function buildTagsPayload(){ return { version:1, exportedAt:new Date().toISOString(), tags: tagsArray() }; }                             // tags + colors
     function downloadJSON(obj,prefix){ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${prefix}-${nowStamp()}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
     async function copyJSON(obj){ try{ await navigator.clipboard.writeText(JSON.stringify(obj,null,2)); return true; }catch{ return false; } }
@@ -586,10 +783,10 @@
     exportPop.addEventListener('click',async(e)=>{
       const act=e.target?.dataset?.act; if(!act) return;
       if(act==='download-buttons'){
-        if(!state.length){ showToast('No buttons to export.'); return closeExportPopover(); }
+        if(!state.length&&!folders.length){ showToast('No buttons to export.'); return closeExportPopover(); }
         downloadJSON(buildButtonsPayload(),'buttons'); showToast('Downloaded buttons (with tags & colors).');
       }else if(act==='copy-buttons'){
-        if(!state.length){ showToast('No buttons to copy.'); return closeExportPopover(); }
+        if(!state.length&&!folders.length){ showToast('No buttons to copy.'); return closeExportPopover(); }
         showToast((await copyJSON(buildButtonsPayload()))?'Copied buttons (with tags & colors).':'Copy failed.');
       }else if(act==='download-tags'){
         if(!allTags().length){ showToast('No tags to export.'); return closeExportPopover(); }
@@ -602,14 +799,26 @@
     });
 
     /* Smart Import */
-    function mergeButtons(arr,dedupe){
+    // Folders from an export are matched to existing folders by name, or created. Returns old id -> local id.
+    function mergeFolders(list){
+      const map=new Map(); let added=0; if(!Array.isArray(list)) return { map, added };
+      for(const x of list){
+        if(!x||typeof x.name!=='string'||!x.name.trim()) continue; const name=x.name.trim();
+        let f=folders.find(y=>norm(y.name)===norm(name)); if(!f){ f={id:uid(), name, collapsed:Boolean(x.collapsed)}; folders.push(f); added++; }
+        if(x.id!=null) map.set(String(x.id), f.id);
+      }
+      if(added) saveFolders();
+      return { map, added };
+    }
+    function mergeButtons(arr,dedupe,folderMap=null){
       if(!Array.isArray(arr)) return 0;
       const existing=new Set(state.map(x=>norm(x.title))); let added=0;
       for(const x of arr){
         if(!x||typeof x.title!=='string'||typeof x.text!=='string') continue;
         const title=x.title.trim(), text=sanitizeText(x.text); const tags=Array.isArray(x.tags)?x.tags.map(String).filter(Boolean):[];
         if(!text) continue; if(dedupe && existing.has(norm(title))) continue;
-        state.push({id:uid(), title, text, tags}); existing.add(norm(title)); added++;
+        const folderId=(folderMap&&x.folderId!=null)?(folderMap.get(String(x.folderId))||null):null;
+        state.push({id:uid(), title, text, tags, folderId}); existing.add(norm(title)); added++;
       }
       return added;
     }
@@ -638,15 +847,16 @@
     }
     function looksLikeJSON(s){ const t=String(s||'').trim(); return t.startsWith('{')||t.startsWith('['); }
     function smartImport(text,dedupe){
-      let addedButtons=0, colored=0;
+      let addedButtons=0, colored=0, addedFolders=0;
       try{
         if(looksLikeJSON(text)){
           const data=JSON.parse(text);
           if(Array.isArray(data)){ addedButtons+=mergeButtons(data,dedupe); }
           else if(data && typeof data==='object'){
-            if(Array.isArray(data.buttons)) addedButtons+=mergeButtons(data.buttons,dedupe);
+            const { map, added }=mergeFolders(data.folders); addedFolders+=added;
+            if(Array.isArray(data.buttons)) addedButtons+=mergeButtons(data.buttons,dedupe,map);
             if(Array.isArray(data.tags)) colored+=mergeTagColorsFromObject(data.tags);
-            if(addedButtons===0 && colored===0 && data.title && data.text){ addedButtons+=mergeButtons([data],dedupe); }
+            if(addedButtons===0 && colored===0 && addedFolders===0 && data.title && data.text){ addedButtons+=mergeButtons([data],dedupe); }
           }
         }else{
           const head=text.slice(0,200);
@@ -662,14 +872,15 @@
         else if(text.includes('|')) addedButtons+=mergeButtons(parsePipes(text),dedupe);
         else addedButtons+=mergeButtons(parsePlain(text),dedupe);
       }
-      return { addedButtons, colored };
+      return { addedButtons, colored, addedFolders };
     }
+    const importSummary=({addedButtons,colored,addedFolders})=>`Imported ${addedButtons} item(s)${addedFolders?`, ${addedFolders} folder(s)`:''}, colored ${colored} tag(s).`;
     async function importFileBlob(file,dedupe){
       if(!/\.(json|csv|tsv|txt)$/i.test(file.name) && !/^(application\/json|text\/)/.test(file.type)){ showToast('Unsupported file. Use .json, .csv, .tsv or .txt.'); return; }
       try{
-        const text=await file.text(); const { addedButtons, colored }=smartImport(text,dedupe);
-        if(addedButtons===0 && colored===0){ showToast('No recognizable data found.'); return; }
-        saveTagColors(); save(); applyFiltersAndRender(); renderAll(); showToast(`Imported ${addedButtons} item(s), colored ${colored} tag(s).`);
+        const text=await file.text(); const r=smartImport(text,dedupe);
+        if(r.addedButtons===0 && r.colored===0 && r.addedFolders===0){ showToast('No recognizable data found.'); return; }
+        saveTagColors(); save(); applyFiltersAndRender(); renderAll(); showToast(importSummary(r));
       }catch{ showToast('Import failed.'); }
     }
 
@@ -708,10 +919,10 @@
     function closeDialogSafe(dlg){ if(dlg?.close) dlg.close(); else { dlg?.removeAttribute('open'); document.body.style.overflow=''; } }
 
     /* Wire up */
-    openManageBtn.addEventListener('click',()=>{ openDialogSafe(manageDlg); titleInput.focus(); populateTagDatalist(); syncInputWithChips(tagsCreateInput,existingTags); });
+    openManageBtn.addEventListener('click',()=>{ openDialogSafe(manageDlg); titleInput.focus(); populateTagDatalist(); fillFolderSelect(btnFolderSel,btnFolderSel.value); syncInputWithChips(tagsCreateInput,existingTags); });
     createBtn.addEventListener('click',(e)=>{ e.preventDefault(); handleCreate(); });
     closeManageBtn.addEventListener('click',(e)=>{ e.preventDefault(); closeDialogSafe(manageDlg); });
-    clearBtn.addEventListener('click',()=>{ if(!state.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons and custom tag colors?')) return; state=[]; tagColors={}; saveTagColors(); selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); renderAll(); });
+    clearBtn.addEventListener('click',()=>{ if(!state.length&&!folders.length){ showToast('Nothing to clear.'); return; } if(!confirm('Delete all buttons, folders and custom tag colors?')) return; state=[]; folders=[]; saveFolders(); tagColors={}; saveTagColors(); selectedIds.clear(); activeFilters.clear(); save(); applyFiltersAndRender(); showToast('Cleared.'); renderAll(); });
 
     selectToggleBtn.addEventListener('click',handleSelectToggle);
     deleteSelectedBtn.addEventListener('click',handleDeleteSelected);
@@ -740,7 +951,7 @@
     let searchTimer=null;
     searchInput.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>setSearch(searchInput.value),150); });
     searchClear.addEventListener('click',()=>{ setSearch(''); searchInput.focus(); });
-    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); setSearch(searchInput.value); const items=itemsForRender(); if(items.length){ copyItem(items[0]); } else showToast('No results to copy.'); } });
+    searchInput.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && searchInput.value){ e.preventDefault(); setSearch(''); searchInput.focus(); } else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); setSearch(searchInput.value); const items=groupForRender().ordered; if(items.length){ copyItem(items[0]); } else showToast('No results to copy.'); } });
 
     // Import dialog
     function openImportDialog(){ importJSON.value=''; importDedupe.checked=true; openDialogSafe(importDlg); importJSON.focus(); }
@@ -748,10 +959,10 @@
     importCancelBtn.addEventListener('click',()=>closeDialogSafe(importDlg));
     importRunBtn.addEventListener('click',()=>{
       const raw=importJSON.value||''; if(!raw.trim()){ showToast('Paste JSON or choose a file.'); return; }
-      const { addedButtons, colored }=smartImport(raw, importDedupe.checked);
-      if(addedButtons===0 && colored===0){ showToast('Nothing imported.'); return; }
+      const r=smartImport(raw, importDedupe.checked);
+      if(r.addedButtons===0 && r.colored===0 && r.addedFolders===0){ showToast('Nothing imported.'); return; }
       saveTagColors(); save(); applyFiltersAndRender(); renderAll(); closeDialogSafe(importDlg);
-      showToast(`Imported ${addedButtons} item(s), colored ${colored} tag(s).`);
+      showToast(importSummary(r));
     });
     const setDzHover=(on)=> importDropzone.classList.toggle('dz-hover', on);
     function triggerFile(){ importFile.value=''; importFile.click(); }
@@ -765,8 +976,8 @@
     // Init
     window.addEventListener('DOMContentLoaded',()=>{
       document.body.classList.toggle('compact', window.innerWidth<=740);
-      loadSettings(); loadTagColors(); state=load();
-      applyFiltersAndRender(); rebuildFiltersUI(); populateTagDatalist(); updateClearButton();
+      loadSettings(); loadTagColors(); loadFolders(); state=load();
+      applyFiltersAndRender(); rebuildFiltersUI(); populateTagDatalist(); updateClearButton(); fillFolderSelect(btnFolderSel,'');
     });
   </script>
 </body>
